@@ -719,23 +719,6 @@ const RAT_BODY = [
   '....kyyyyyyyk...',
 ];
 
-/** Crazy person (wave 2+): tinfoil hat, wild eyes, screaming. Watched too many ads. */
-const MADMAN_BODY = [
-  '.......kk.......',
-  '......kwgk......',
-  '.....kwgggk.....',
-  '...kkkkkkkkkk...',
-  '..mkffffffffkm..',
-  '..kfwkfffwkfk...',
-  '...kffffffffk...',
-  '...kfkRRRRkfk...',
-  '....kkfffkk.....',
-  '..kkwwwrwwwwkk..',
-  '.kfkwwwwwrwwkfk.',
-  '.kfkwwrwwwwwkfk.',
-  '..k.knnnnnnk.k..',
-];
-
 export const SPR = {
   player: spriteSet(PLAYER_BODY, [
     ['....kmk..kmk....', '....kmk..kmk....', '...kkkk..kkkk...'],
@@ -777,10 +760,6 @@ export const SPR = {
   wolf: spriteSet([], [recolor(WOLF_A.slice(5), WOLF_FOE), recolor(WOLF_B.slice(5), WOLF_FOE)]),
   imp: spriteSet([], [IMP_UP, IMP_DOWN]),
   rat: spriteSet(RAT_BODY, [['.....kk...kk....'], ['....kk.....kk...']]),
-  madman: spriteSet(MADMAN_BODY, [
-    ['....knk..knk....', '....knk..knk....', '...kffk..kffk...'],
-    ['....knk..knk....', '...knk....knk...', '...kfk....kfk...'],
-  ]),
   phoenix: spriteSet([], [PHOENIX_A, PHOENIX_B]),
   mage: spriteSet(MAGE_BODY, [
     ['....kuuuuuuk....', '...kuuuuuuuuk...', '...kkkkkkkkkk...'],
@@ -831,7 +810,6 @@ export const ICONS = {
   wolf: SPR.wolf.r[0],
   imp: SPR.imp.r[0],
   rat: SPR.rat.r[0],
-  madman: SPR.madman.r[0],
   gem: build([
     '..kkkk..',
     '.kCwcck.',

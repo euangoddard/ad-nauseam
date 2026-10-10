@@ -74,9 +74,6 @@ there if the domain changes.
   (can't be hit while it flickers). It slashes if it warps in next to you, fires bursts of pixel shards
   from range, and lobs a slow chequered packet: **get hit and you're glitched, unable to move or dash
   for 3 seconds** (you can still aim and attack).
-- **Crazy person** (wave 2+): a man in a tinfoil hat who has watched far too many ads. Zigzags
-  about shouting, throws junk at you (bottles, boots, phones), and when you're close he screams
-  and charges in a straight line. If he runs into a wall he knocks himself dizzy.
 - **Thunder rat** (wave 3+): small and quick, scurries about in bursts. It crackles with static,
   then a flashing dotted line shows where the bolt will go: get off the line before it fires.
 - **Imp** (wave 4+): comes in swarms of three. Tiny flying devils that flit about erratically and

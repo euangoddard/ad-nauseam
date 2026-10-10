@@ -18,7 +18,6 @@ export type AdSource =
   | 'worm'
   | 'slime'
   | 'wolf'
-  | 'madman'
   | 'imp'
   | 'rat'
   | 'premium'
@@ -51,7 +50,7 @@ interface Creative {
   fine: string;
 }
 
-const ANY: AdSource[] = ['skeleton', 'zombie', 'sorcerer', 'goblin', 'troll', 'reaper', 'glitch', 'dragon', 'eyeball', 'bat', 'bear', 'worm', 'slime', 'wolf', 'madman', 'imp', 'rat', 'bonus'];
+const ANY: AdSource[] = ['skeleton', 'zombie', 'sorcerer', 'goblin', 'troll', 'reaper', 'glitch', 'dragon', 'eyeball', 'bat', 'bear', 'worm', 'slime', 'wolf', 'imp', 'rat', 'bonus'];
 
 const CREATIVES: Creative[] = [
   { tags: ['skeleton'], headline: 'HOT SKELETONS IN YOUR AREA', body: "They're 2 metres away and ready to RATTLE.", cta: 'MEET THEM', icon: 'skeleton', fine: '*Skeletons may be armed. And dangerous. Mostly armed.' },
@@ -97,9 +96,6 @@ const CREATIVES: Creative[] = [
   { tags: ['wolf'], headline: 'LONELY? JOIN A PACK', body: 'Wolves near you are looking for a new member. Bring snacks. Be snacks.', cta: 'JOIN PACK', icon: 'wolf', fine: 'Pack dues payable in limbs.' },
   { tags: ['wolf'], headline: 'HOWL-O-GRAM', body: 'Send a singing wolf to someone you love! They will never forget it.', cta: 'SEND ONE', icon: 'wolf', fine: 'They will also never stop running.' },
   { tags: ['wolf'], headline: 'KIBBLE RECALL', body: 'Our Big Bad Kibble may contain traces of grandma.', cta: 'CHECK BATCH', icon: 'wolf', fine: 'Red hoods sold separately.' },
-  { tags: ['madman'], headline: 'HE WATCHED 10,000 ADS', body: 'Now he lives in a dungeon and throws phones. Watch ad 10,001 to find out why!', cta: 'WATCH NEXT', icon: 'madman', fine: 'This could be you. Keep watching.' },
-  { tags: ['madman'], headline: 'TINFOIL HATS 2 FOR 1', body: 'Blocks 100% of ads*. Doctors are BAFFLED.', cta: 'BUY 2', icon: 'madman', fine: '*Does not block ads.' },
-  { tags: ['madman'], headline: 'ARE YOU STILL WATCHING?', body: 'He is. He has been since 2009. Please help him.', cta: 'YES', icon: 'madman', fine: 'Pressing YES plays another ad.' },
   { tags: ['imp'], headline: 'IMP-ROVE YOUR LIFE', body: 'Small, red and full of bad ideas: the life coach for you.', cta: 'GET COACHED', icon: 'imp', fine: 'Sessions held in a lake of fire.' },
   { tags: ['imp'], headline: 'MISCHIEF INSURANCE', body: 'Imps broke your stuff? Of course they did. They broke ours too.', cta: 'CLAIM', icon: 'imp', fine: 'All claims are processed by imps.' },
   { tags: ['imp'], headline: 'SPICY WINGS', body: 'Fresh from the underworld. 100% real imp.', cta: 'ORDER', icon: 'imp', fine: 'Allergens: brimstone, sulfur, malice.' },

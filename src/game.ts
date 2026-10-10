@@ -15,7 +15,7 @@ export const RES = 2;
 const AR = { x0: 12, y0: 40, x1: 308, y1: 172 };
 const TORCHES = [40, 120, 200, 280];
 
-export type EnemyType = 'skeleton' | 'zombie' | 'sorcerer' | 'goblin' | 'troll' | 'reaper' | 'glitch' | 'dragon' | 'eyeball' | 'bat' | 'bear' | 'worm' | 'slime' | 'wolf' | 'madman' | 'imp' | 'rat';
+export type EnemyType = 'skeleton' | 'zombie' | 'sorcerer' | 'goblin' | 'troll' | 'reaper' | 'glitch' | 'dragon' | 'eyeball' | 'bat' | 'bear' | 'worm' | 'slime' | 'wolf' | 'imp' | 'rat';
 type EState = 'chase' | 'windup' | 'recover' | 'cast' | 'summon' | 'flee' | 'phase' | 'breathe' | 'aim' | 'laser' | 'tears' | 'swoop' | 'screech' | 'charge' | 'maul' | 'stun' | 'burrow' | 'surface' | 'warp';
 
 interface Stats {
@@ -58,19 +58,14 @@ const STATS: Record<EnemyType, Stats> = {
   // hop about and lob poison blobs that leave puddles.
   worm: { hp: 6, speed: 70, r: 6, dmg: 18, range: 0, windup: 0.7, recover: 0, score: 300, kb: 15, hy: 10, drop: 0.12 },
   slime: { hp: 4, speed: 34, r: 6, dmg: 8, range: 0, windup: 0.5, recover: 0.4, score: 200, kb: 60, hy: 5, drop: 0.12 },
-  // Wolves hunt in packs: circle you, crouch, then pounce. Crazy people zigzag about, throw junk and
-  // charge at you screaming. Imps come in swarms and flit about throwing little fireballs. Thunder
+  // Wolves hunt in packs: circle you, crouch, then pounce. Imps come in swarms and flit about throwing little fireballs. Thunder
   // rats scurry in, crackle with static, then fire a bolt of lightning along a locked line.
   wolf: { hp: 3, speed: 60, r: 5, dmg: 13, range: 0, windup: 0.45, recover: 0.7, score: 180, kb: 80, hy: 4, drop: 0.1 },
-  madman: { hp: 5, speed: 44, r: 5, dmg: 15, range: 0, windup: 0.6, recover: 0.6, score: 260, kb: 70, hy: 6, drop: 0.15 },
   imp: { hp: 1, speed: 66, r: 4, dmg: 7, range: 0, windup: 0.35, recover: 0, score: 140, kb: 110, hy: 13, drop: 0.05 },
   rat: { hp: 2, speed: 72, r: 4, dmg: 13, range: 0, windup: 0.8, recover: 0.6, score: 200, kb: 100, hy: 3, drop: 0.1 },
 };
 /** Wolf pounce: how long the leap lasts and how fast it goes. */
 const WOLF = { pounce: 0.32, pounceSpeed: 210 };
-/** Crazy person: charge time and speed, stun after running into a wall, junk throw windup and damage. */
-const MAD = { charge: 0.7, chargeSpeed: 175, stun: 1, throwT: 0.4, junkDmg: 10 };
-const MAD_SHOUTS = ['SKIP AD!', 'WHERE IS THE X', 'NO COOKIES!', 'MAKE IT STOP', '5 MORE SECONDS', 'LIKE+SUBSCRIBE'];
 /** Thunder rat: aim locks this long before the bolt fires; the bolt's length; how long it's drawn. */
 const RAT = { lock: 0.25, reach: 90, flash: 0.15 };
 const WORM = { up: 1.8, rise: 0.2, sink: 0.3, spitDmg: 8 };
@@ -97,7 +92,6 @@ const COINS: Record<EnemyType, [number, number]> = {
   worm: [4, 8],
   slime: [3, 6],
   wolf: [2, 5],
-  madman: [3, 7],
   imp: [1, 3],
   rat: [2, 5],
 };
@@ -227,8 +221,6 @@ interface Bullet {
   homing?: boolean;
   /** Imp fireball: a small one. */
   small?: boolean;
-  /** Crazy person junk: 0 bottle, 1 boot, 2 phone. */
-  junk?: number;
   /** Mage bolts pass through this many more enemies (never hitting the same one twice). */
   pierce?: number;
   hits?: Set<Enemy>;
@@ -806,7 +798,6 @@ export class Game {
       ['troll', n >= 3 ? Math.max(1, Math.floor(n / 3)) : 0],
       ['dragon', n >= 4 ? Math.max(1, Math.floor((n - 1) / 3)) : 0],
       ['reaper', n >= 5 ? Math.max(1, Math.floor((n - 2) / 3)) : 0],
-      ['madman', n >= 2 ? Math.max(1, Math.floor(n / 4)) : 0],
       ['rat', n >= 3 ? 2 + Math.floor((n - 3) / 3) : 0],
       // Imps come in swarms of three, wolves in packs.
       ['imp', n >= 4 ? 3 * Math.max(1, Math.floor((n - 1) / 4)) : 0],
@@ -831,7 +822,7 @@ export class Game {
     this.spawnQueue = list;
     this.spawnT = 0.6;
     const introSub: Record<number, string> = {
-      2: 'sorcerers, goblins + a crazy person',
+      2: 'sorcerers + goblins incoming',
       3: 'trolls + thunder rats incoming',
       4: 'baby dragons + imps incoming',
       5: 'reapers + wolf packs incoming',
@@ -1618,8 +1609,6 @@ export class Game {
         [mvx, mvy] = this.aiDragon(e, dx, dy, d, dt);
       } else if (e.type === 'wolf') {
         [mvx, mvy] = this.aiWolf(e, dx, dy, d, dt);
-      } else if (e.type === 'madman') {
-        [mvx, mvy] = this.aiMadman(e, dx, dy, d, dt);
       } else if (e.type === 'imp') {
         [mvx, mvy] = this.aiImp(e, dx, dy, d, dt);
       } else if (e.type === 'rat') {
@@ -2380,101 +2369,6 @@ export class Game {
     }
   }
 
-  /**
-   * The crazy person zigzags after you shouting about ads. From range he throws junk (bottles, boots,
-   * phones; `combo` picks which while winding up). Up close he screams, then charges in a straight
-   * line, flailing; running into a wall knocks him dizzy.
-   */
-  private aiMadman(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
-    const p = this.player;
-    const st = STATS.madman;
-    switch (e.state) {
-      case 'cast':
-        e.t -= dt;
-        e.face = dx < 0 ? -1 : 1;
-        if (e.t <= 0) {
-          const ox = e.x + e.face * 4;
-          const oy = e.y - 13;
-          const a = Math.atan2(p.y - 6 - oy, p.x - ox);
-          const v = 115 + this.wave * 2;
-          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: 3, dmg: MAD.junkDmg, life: 3, enemy: true, junk: e.combo });
-          sfx.toss();
-          e.state = 'chase';
-          e.fireCd = rand(2, 3.2) / this.difficulty;
-        }
-        return [0, 0];
-      case 'windup':
-        e.t -= dt;
-        if (e.t > 0.15) {
-          e.aimX = dx / d;
-          e.aimY = dy / d;
-          e.face = dx < 0 ? -1 : 1;
-        }
-        if (e.t <= 0) {
-          e.state = 'charge';
-          e.t = MAD.charge;
-          e.combo = 0;
-        }
-        return [0, 0];
-      case 'charge': {
-        // `combo` marks that this charge has already hit you.
-        e.t -= dt;
-        if (!e.combo && Math.hypot(p.x - e.x, p.y - e.y) < 12 && this.hurtPlayer(st.dmg, e.aimX, e.aimY)) e.combo = 1;
-        const wall = e.x <= AR.x0 + 1 || e.x >= AR.x1 - 1 || e.y <= AR.y0 + 1 || e.y >= AR.y1 - 1;
-        if (wall && e.t < MAD.charge - 0.1) {
-          e.state = 'stun';
-          e.t = MAD.stun;
-          this.burst(e.x + e.aimX * 6, e.y - 8, 8, ['#94b0c2', '#f4f4f4'], 50);
-          sfx.slam();
-          return [0, 0];
-        }
-        if (e.t <= 0) {
-          e.state = 'recover';
-          e.t = st.recover;
-        }
-        const k = MAD.chargeSpeed / st.speed;
-        return [e.aimX * k, e.aimY * k];
-      }
-      case 'stun':
-      case 'recover':
-        e.t -= dt;
-        if (e.t <= 0) {
-          e.state = 'chase';
-          e.atkCd = rand(1.5, 2.5) / this.difficulty;
-        }
-        return [0, 0];
-      default: {
-        e.state = 'chase';
-        e.face = dx < 0 ? -1 : 1;
-        e.fireCd -= dt;
-        if (Math.random() < dt * 0.2) this.texts.push({ x: e.x, y: e.y - 22, text: pick(MAD_SHOUTS), t: 1.2, color: '#f5a3c7' });
-        if (e.atkCd <= 0 && d < 70) {
-          e.state = 'windup';
-          e.t = st.windup;
-          e.aimX = dx / d;
-          e.aimY = dy / d;
-          this.texts.push({ x: e.x, y: e.y - 22, text: 'AAAAAH!', t: 0.8, color: '#ff004d' });
-          sfx.scream();
-          return [0, 0];
-        }
-        if (e.fireCd <= 0 && d > 50 && d < 170) {
-          e.state = 'cast';
-          e.t = MAD.throwT;
-          e.combo = randInt(0, 2);
-          return [0, 0];
-        }
-        // Zigzags: veers off at a random angle every fraction of a second (`strafe` is the angle here).
-        e.strafeT -= dt;
-        if (e.strafeT <= 0) {
-          e.strafe = rand(-1.3, 1.3);
-          e.strafeT = rand(0.15, 0.45);
-        }
-        const a = Math.atan2(dy, dx) + e.strafe;
-        return [Math.cos(a), Math.sin(a)];
-      }
-    }
-  }
-
   /** Imps flit around you erratically at mid range, throwing small fireballs. */
   private aiImp(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
     const p = this.player;
@@ -2786,13 +2680,12 @@ export class Game {
         if (b.sonic) this.burst(b.x, b.y, 3, ['#f5a3c7', '#8a3f9e'], 30);
         else if (b.sand) this.burst(b.x, b.y, 3, ['#bf9562', '#7a5636'], 30);
         else if (b.shard || b.packet) this.burst(b.x, b.y, 4, ['#ff004d', '#73eff7', '#8a3f9e'], 30);
-        else if (b.junk !== undefined) this.burst(b.x, b.y, 4, ['#94b0c2', '#f4f4f4', '#8b5a3c'], 30);
         else if (!b.flame) this.burst(b.x, b.y, 4, b.tear ? ['#3b5dc9', '#73eff7'] : b.enemy ? ['#ef7d57', '#ffcd75'] : ['#41a6f6', '#73eff7'], 30);
         continue;
       }
       if (b.enemy) {
         if ((b.shard || b.packet) && Math.random() < 0.5) this.particles.push({ x: b.x + rand(-3, 3), y: b.y + rand(-3, 3), vx: 0, vy: 0, life: 0.15, color: pick(['#ff004d', '#73eff7', '#8a3f9e']), size: 1, grav: 0, floor: 999 });
-        else if (!b.flame && !b.sonic && !b.sand && !b.shard && !b.packet && b.junk === undefined && Math.random() < 0.5) this.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, color: pick(b.tear ? ['#3b5dc9', '#73eff7', '#29366f'] : ['#ef7d57', '#ffcd75', '#b13e53']), size: 1, grav: 0, floor: 999 });
+        else if (!b.flame && !b.sonic && !b.sand && !b.shard && !b.packet && Math.random() < 0.5) this.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, color: pick(b.tear ? ['#3b5dc9', '#73eff7', '#29366f'] : ['#ef7d57', '#ffcd75', '#b13e53']), size: 1, grav: 0, floor: 999 });
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - (p.y - 6)) < b.r + 4) {
           b.life = 0;
           const d = Math.hypot(b.vx, b.vy) || 1;
@@ -2886,7 +2779,6 @@ export class Game {
       worm: ['#ef7d57', '#8b5a3c', '#ffcd75'],
       slime: ['#a7f070', '#38b764', '#257179'],
       wolf: ['#566c86', '#333c57', '#94b0c2', '#b13e53'],
-      madman: ['#f4f4f4', '#e8b796', '#94b0c2', '#b13e53'],
       imp: ['#b13e53', '#ff004d', '#5d275d', '#ffcd75'],
       rat: ['#ffcd75', '#ef7d57', '#f4f4f4'],
     };
@@ -3345,9 +3237,8 @@ export class Game {
       else oy = -Math.min(4, Math.round(Math.hypot(e.kx, e.ky) / 40));
     }
     if (e.type === 'dragon' && e.state === 'breathe') ox = Math.floor(this.time * 30) % 2 ? -e.face : 0;
-    // Wolves crouch before a pounce; crazy people shake all over while charging.
+    // Wolves crouch before a pounce.
     if (e.type === 'wolf' && e.state === 'windup') oy = 1;
-    if (e.type === 'madman' && e.state === 'charge') ox = Math.floor(this.time * 30) % 2 ? 1 : -1;
     // Thunder rats flash white with static once they've locked on.
     const sparking = e.type === 'rat' && e.state === 'windup' && (e.t <= RAT.lock || Math.floor(this.time * 12) % 2 === 0);
     const fr = e.type === 'slime' ? this.slimeFrame(e) : e.type === 'wolf' && e.state === 'charge' ? 1 : frame;
@@ -3404,8 +3295,6 @@ export class Game {
       this.drawClub(e);
     } else if (e.type === 'reaper') {
       this.drawScythe(e, e.x + e.face * 5, e.y - 8 - lift);
-    } else if (e.type === 'madman') {
-      this.drawMadman(e, ox);
     } else if (e.type === 'imp' && e.state === 'cast') {
       // A fireball growing in its claw.
       const f = Math.floor(this.time * 20) % 2;
@@ -3572,57 +3461,6 @@ export class Game {
     for (let k = 0; k < 3; k++) {
       const a = this.time * 6 + (k * Math.PI * 2) / 3;
       g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * 2), 2, 2);
-    }
-  }
-
-  /** Crazy person's arms: waving about, flailing wildly in a charge, or holding junk up to throw. */
-  private drawMadman(e: Enemy, ox: number) {
-    const x = e.x + ox;
-    const sy = e.y - 9;
-    if (e.state === 'cast') {
-      const hx = Math.round(x + e.face * 3);
-      const hy = Math.round(sy - 9);
-      this.pixelLine(x + e.face * 5, sy, hx, hy + 2, '#e8b796');
-      this.drawJunk(e.combo, hx, hy, 0);
-      return;
-    }
-    if (e.state === 'stun') {
-      this.drawDizzy(e.x, e.y - 20, 6);
-      return;
-    }
-    // Arms up and waving; much faster while charging.
-    const speed = e.state === 'charge' || e.state === 'windup' ? 24 : 6;
-    const f = Math.floor(this.time * speed) % 2;
-    for (const side of [-1, 1]) {
-      const up = (f === 0) === (side > 0) ? 6 : 3;
-      this.pixelLine(x + side * 6, sy, x + side * 8, sy - up, '#e8b796');
-    }
-  }
-
-  /** Thrown junk: a bottle, a boot or a phone (still playing an ad), tumbling end over end. */
-  private drawJunk(kind: number, x: number, y: number, spin: number) {
-    const g = this.g;
-    const flat = Math.floor(spin) % 2 === 1;
-    const [w, h] = flat ? [5, 3] : [3, 5];
-    const cx = Math.round(x - w / 2);
-    const cy = Math.round(y - h / 2);
-    g.fillStyle = '#1a1c2c';
-    g.fillRect(cx - 1, cy - 1, w + 2, h + 2);
-    if (kind === 0) {
-      g.fillStyle = '#38b764';
-      g.fillRect(cx, cy, w, h);
-      g.fillStyle = '#a7f070';
-      g.fillRect(cx, cy, 1, 1);
-    } else if (kind === 1) {
-      g.fillStyle = '#8b5a3c';
-      g.fillRect(cx, cy, w, h);
-      g.fillStyle = '#5d275d';
-      g.fillRect(cx, flat ? cy + h - 1 : cy, flat ? w : 1, 1);
-    } else {
-      g.fillStyle = '#333c57';
-      g.fillRect(cx, cy, w, h);
-      g.fillStyle = Math.floor(this.time * 8) % 2 ? '#ff004d' : '#41a6f6';
-      g.fillRect(cx + 1, cy + 1, w - 2, h - 2);
     }
   }
 
@@ -3889,8 +3727,6 @@ export class Game {
         g.fillStyle = '#5d275d';
         g.fillRect(Math.round(b.x - Math.cos(ang) * 6 + Math.cos(ang + a) * 5), Math.round(b.y - Math.sin(ang) * 6 + Math.sin(ang + a) * 5), 1, 1);
       }
-    } else if (b.junk !== undefined) {
-      this.drawJunk(b.junk, b.x, b.y, (3 - b.life) * 14);
     } else if (b.small) {
       // Imp fireball.
       g.fillStyle = '#b13e53';
@@ -4080,15 +3916,6 @@ export class Game {
       g.fillRect(x - 2, y - 1, 3, 1);
       g.fillStyle = '#b13e53';
       g.fillRect(x + 3, y, 2, 1);
-    } else if (d.type === 'madman') {
-      // All that's left is the tinfoil hat.
-      g.fillStyle = '#94b0c2';
-      g.fillRect(x - 3, y - 1, 7, 1);
-      g.fillRect(x - 2, y - 2, 5, 1);
-      g.fillRect(x - 1, y - 3, 3, 1);
-      g.fillStyle = '#f4f4f4';
-      g.fillRect(x, y - 4, 1, 1);
-      g.fillRect(x - 1, y - 2, 1, 1);
     } else if (d.type === 'imp') {
       // A puff of sooty ash with an ember in it.
       g.fillStyle = '#333c57';
@@ -4191,7 +4018,6 @@ export class Game {
       ['glitch', 'THE GLITCH', 'RARE', 'FREEZES YOU'],
       ['worm', 'SANDWORM', 'DESERT', 'BURROWS'],
       ['slime', 'SLIME', 'SLIME LAND', 'POISON'],
-      ['madman', 'CRAZY PERSON', 'ERRATIC', 'THROWS JUNK'],
       ['rat', 'THUNDER RAT', 'SMALL', 'LIGHTNING'],
       ['imp', 'IMP', 'SWARMS', 'FIREBALLS'],
       ['wolf', 'WOLF', 'PACKS', 'POUNCES'],

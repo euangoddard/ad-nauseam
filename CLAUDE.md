@@ -120,7 +120,7 @@ The overlay has `pointer-events: none`; only `.nag-backdrop` and `.premium` re-e
 
 ## Waves
 
-`startWave(n)`: `2+ceil(0.8n)` skeletons, `ceil(0.6n)` zombies, sorcerers, goblins and crazy people from wave 2,
+`startWave(n)`: `2+ceil(0.8n)` skeletons, `ceil(0.6n)` zombies, sorcerers and goblins from wave 2,
 trolls and thunder rats from 3, baby dragons and imps (swarms of 3) from 4, and reapers and wolves (packs) from 5, and from wave 2 a 35–75% chance of a glitch (plus a 30% chance of a second from wave 7; still the rarest enemy), one or two of each at first (see `counts`), shuffled and spawned one by one through red portals every 0.5–1.1s ÷ difficulty (0.9s telegraph, at least 80px from the
 player). Wolves and imps are kept together in the shuffled queue, and each one after the first comes
 through a portal next to the previous one 0.2s later, so packs arrive as a group. A wave clears when the spawn queue, portals, enemies and pending ad timers are all empty;
@@ -139,7 +139,6 @@ enemy speed and spawn rate; enemy HP scales by `+6%/wave`; the score multiplier 
 | reaper | 5 | 38 | 20 | `aiReaper()`: drifts in, then `phase` (`PHASE` 0.5s, untargetable via `targetable()`), teleports ~18px behind the player's aim, scythe windup, wide sweep. 1.8–3s between attacks. |
 | glitch | 7 | 42 | 16 | `aiGlitch()`: rare. Strafes at 50–110px; every 1.8–3s `warp`s (`GLITCH.warp`, untargetable via `targetable()`), 40% of the time landing beside the player to slash (generic melee states). `cast` fires 3 `shard` bullets or a slow `packet` (`e.combo`); a landed packet calls `glitchPlayer()`. `summonCd` is the warp timer. Keeps its own colours (not tinted). |
 | dragon | 4 | 56 | 8 | `aiDragon()`: flies (`lift()`), keeps 40–70px and strafes. Inhale windup, then `breathe` for `BREATH` 0.8s emitting `flame` bullets that turn towards the player at 1.3 rad/s. |
-| madman | 5 | 44 | 15 | "Crazy person". `aiMadman()`: zigzags (`strafe` is a random angle offset), shouts `MAD_SHOUTS`. `cast` throws a `junk` bullet (`combo` picks bottle/boot/phone, `drawJunk()`); within 70px screams (`windup`) then `charge`s (`MAD`), `stun` on hitting a wall. `drawMadman()` draws the arms. |
 | rat | 2 | 72 | 13 | Thunder rat. `aiRat()`: scurries in bursts, `windup` tracks then locks `RAT.lock` before firing; `ratZap()` damages anything near the segment at once and pushes a `Zap` (drawn by `drawZap()`, sight by `drawZapSight()`). Keeps its own colours. |
 | imp | 1 | 66 | 7 | `aiImp()`: flies (`lift()`), wobbles at 40–80px, `cast`s a `small` fireball. Swarms of 3. |
 | wolf | 3 | 60 | 13 | `aiWolf()`: circles at 35–55px, `windup` crouch, `charge` = pounce (`WOLF`, hop via `lift()`), `recover` backs off. Packs. The enemy sprite is the pet's, recoloured; the pet uses `SPR.petWolf`. |
