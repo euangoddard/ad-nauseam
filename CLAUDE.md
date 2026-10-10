@@ -26,7 +26,7 @@ There are no tests or linter. `npm run build` passing is the bar for any change.
 
 | File | Responsibility |
 | --- | --- |
-| `index.html` | `#stage` containing `<canvas id="game" 320x180>` and `#overlay` (DOM layer for ads). Inline SVG favicon, SEO/Open Graph/Twitter meta. |
+| `index.html` | `#stage` containing `<canvas id="game">` (640x360, see Rendering model) and `#overlay` (DOM layer for ads). Inline SVG favicon, SEO/Open Graph/Twitter meta. |
 | `public/og-image.png` | 2400×1260 social preview: a real in-game screenshot (headless Chrome, DPR 2, game at 3.5×) with the title added. |
 | `.env` / `.env.production` | `VITE_SITE_URL` (no trailing slash) for the absolute canonical/`og:` URLs in `index.html` (`%VITE_SITE_URL%`): localhost in dev, `https://ad-nauseam.euans.space` for `vite build`. Must stay absolute: Vite tries to bundle root-relative `og:image` paths and fails. |
 | `.github/workflows/deploy.yml` | On push to `main`: `npm ci`, `npm run build`, deploy `dist/` to GitHub Pages, served on the custom domain `ad-nauseam.euans.space` (set in the repo's Pages settings; no `CNAME` file needed for Actions deploys). |
@@ -41,11 +41,18 @@ There are no tests or linter. `npm run build` passing is the bar for any change.
 
 ## Rendering model
 
-- Internal resolution is **320×180** (`W`, `H` in `game.ts`). The canvas is upscaled via CSS with
-  `image-rendering: pixelated`. `resize()` in `main.ts` uses the largest **integer** scale that fits
-  (fractional only if the window is smaller than 320×180).
-- Draw at rounded integer coordinates to keep pixels crisp; `pixelLine()` draws 1px lines pixel by
-  pixel instead of using `stroke()`.
+- The game works in **320×180 game pixels** (`W`, `H` in `game.ts`): all logic, layout and input use
+  them. The canvas itself is `RES` (2) times that, **640×360**, and `render()` starts with
+  `setTransform(RES, …)`. The canvas is upscaled via CSS with `image-rendering: pixelated`.
+  `resize()` in `main.ts` uses the largest **integer** multiple of 320×180 that fits (fractional only
+  if the window is smaller than that).
+- **Never call `drawImage` directly.** Use `blit()` (or `blitRows()` for slices): it draws the
+  sprite's `hd()` copy, a Scale2x-smoothed double-size version (`sprites.ts`, cached per canvas), at
+  the 1x sprite's size in game pixels. Sprite canvases stay 1x, so `img.width`/`height` are still
+  game-pixel sizes. Ad icons also use `hd()`.
+- Positions snap to half game pixels with `half()` (sprites in `drawSet()`, particles, `pixelLine()`),
+  which is one canvas pixel. Other effects draw at rounded integer game pixels. `pixelLine()` draws
+  1-game-pixel-thick lines in half-pixel steps instead of using `stroke()`.
 - Canvas text uses Press Start 2P at **8px** (crisp size) or 16px for big titles, via `Game.text()`
   (draws a 1px dark drop shadow). Text is ~8px per character, so a full-width line holds ~40 chars.
 - Entities are drawn feet-anchored: `drawSet()` draws a sprite at `(x-w/2, y-h+1)` (so a 16×16 sprite
@@ -113,9 +120,10 @@ The overlay has `pointer-events: none`; only `.ad-backdrop` and `.premium` re-en
 
 ## Waves
 
-`startWave(n)`: `2+ceil(0.8n)` skeletons, `ceil(0.6n)` zombies, sorcerers and goblins from wave 2, trolls from 3,
-baby dragons from 4 and reapers from 5, and from wave 2 a 35–75% chance of a glitch (plus a 30% chance of a second from wave 7; still the rarest enemy), one or two of each at first (see `counts`), shuffled and spawned one by one through red portals every 0.5–1.1s ÷ difficulty (0.9s telegraph, at least 80px from the
-player). A wave clears when the spawn queue, portals, enemies and pending ad timers are all empty;
+`startWave(n)`: `2+ceil(0.8n)` skeletons, `ceil(0.6n)` zombies, sorcerers, goblins and crazy people from wave 2,
+trolls and thunder rats from 3, baby dragons and imps (swarms of 3) from 4, and reapers and wolves (packs) from 5, and from wave 2 a 35–75% chance of a glitch (plus a 30% chance of a second from wave 7; still the rarest enemy), one or two of each at first (see `counts`), shuffled and spawned one by one through red portals every 0.5–1.1s ÷ difficulty (0.9s telegraph, at least 80px from the
+player). Wolves and imps are kept together in the shuffled queue, and each one after the first comes
+through a portal next to the previous one 0.2s later, so packs arrive as a group. A wave clears when the spawn queue, portals, enemies and pending ad timers are all empty;
 then there's a 3s break and the player heals up to 15 HP. `difficulty = 1 + (wave-1)*0.04` scales
 enemy speed and spawn rate; enemy HP scales by `+6%/wave`; the score multiplier is `+10%/wave`.
 
@@ -131,6 +139,10 @@ enemy speed and spawn rate; enemy HP scales by `+6%/wave`; the score multiplier 
 | reaper | 5 | 38 | 20 | `aiReaper()`: drifts in, then `phase` (`PHASE` 0.5s, untargetable via `targetable()`), teleports ~18px behind the player's aim, scythe windup, wide sweep. 1.8–3s between attacks. |
 | glitch | 7 | 42 | 16 | `aiGlitch()`: rare. Strafes at 50–110px; every 1.8–3s `warp`s (`GLITCH.warp`, untargetable via `targetable()`), 40% of the time landing beside the player to slash (generic melee states). `cast` fires 3 `shard` bullets or a slow `packet` (`e.combo`); a landed packet calls `glitchPlayer()`. `summonCd` is the warp timer. Keeps its own colours (not tinted). |
 | dragon | 4 | 56 | 8 | `aiDragon()`: flies (`lift()`), keeps 40–70px and strafes. Inhale windup, then `breathe` for `BREATH` 0.8s emitting `flame` bullets that turn towards the player at 1.3 rad/s. |
+| madman | 5 | 44 | 15 | "Crazy person". `aiMadman()`: zigzags (`strafe` is a random angle offset), shouts `MAD_SHOUTS`. `cast` throws a `junk` bullet (`combo` picks bottle/boot/phone, `drawJunk()`); within 70px screams (`windup`) then `charge`s (`MAD`), `stun` on hitting a wall. `drawMadman()` draws the arms. |
+| rat | 2 | 72 | 13 | Thunder rat. `aiRat()`: scurries in bursts, `windup` tracks then locks `RAT.lock` before firing; `ratZap()` damages anything near the segment at once and pushes a `Zap` (drawn by `drawZap()`, sight by `drawZapSight()`). Keeps its own colours. |
+| imp | 1 | 66 | 7 | `aiImp()`: flies (`lift()`), wobbles at 40–80px, `cast`s a `small` fireball. Swarms of 3. |
+| wolf | 3 | 60 | 13 | `aiWolf()`: circles at 35–55px, `windup` crouch, `charge` = pounce (`WOLF`, hop via `lift()`), `recover` backs off. Packs. The enemy sprite is the pet's, recoloured; the pet uses `SPR.petWolf`. |
 
 - **Bosses** (`isBoss()`, `BOSS_NAMES`): `isBossWave(n)` (every 6th wave) makes `startWave()` pick one at
   random (`eyeball`, two `bat`s, or `bear`) and queue just that; they spawn on the far side from the
@@ -234,7 +246,7 @@ takes priority over the mouse; mouse aim only applies after the mouse has moved 
 
 ## Extending
 
-- **New enemy**: add to `EnemyType`, `STATS`, a sprite in `SPR` (and `ICONS` if ads should use it),
+- **New enemy**: add to `EnemyType`, `STATS`, `COINS`, a sprite in `SPR` (and `ICONS` if ads should use it),
   AI in `updateEnemies()`, death colours and decal in `killEnemy()`/`drawDecal()`, wave composition
   in `startWave()`, add it to `AdSource` and `ANY`, write tagged creatives, and add it to the title-screen
   cast (which shows three at a time and rotates).

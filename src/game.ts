@@ -1,4 +1,4 @@
-import { SPR, HEART, ICONS, recolorSet, type SpriteSet } from './sprites';
+import { SPR, HEART, ICONS, hd, recolorSet, type SpriteSet } from './sprites';
 import { sfx } from './audio';
 import type { Input } from './input';
 import { PERKS, type AdManager, type PerkId } from './ads';
@@ -6,11 +6,16 @@ import { UPGRADES, HEROES, loadSave, storeSave, nextCost, heroOwned } from './sh
 
 export const W = 320;
 export const H = 180;
+/**
+ * The canvas has RES canvas pixels per game pixel. Game logic stays in 320x180 game pixels; sprites
+ * are drawn from smoothed double-size copies (`hd()`), and positions snap to half pixels.
+ */
+export const RES = 2;
 /** Walkable area, measured at the entities' feet. */
 const AR = { x0: 12, y0: 40, x1: 308, y1: 172 };
 const TORCHES = [40, 120, 200, 280];
 
-export type EnemyType = 'skeleton' | 'zombie' | 'sorcerer' | 'goblin' | 'troll' | 'reaper' | 'glitch' | 'dragon' | 'eyeball' | 'bat' | 'bear' | 'worm' | 'slime';
+export type EnemyType = 'skeleton' | 'zombie' | 'sorcerer' | 'goblin' | 'troll' | 'reaper' | 'glitch' | 'dragon' | 'eyeball' | 'bat' | 'bear' | 'worm' | 'slime' | 'wolf' | 'madman' | 'imp' | 'rat';
 type EState = 'chase' | 'windup' | 'recover' | 'cast' | 'summon' | 'flee' | 'phase' | 'breathe' | 'aim' | 'laser' | 'tears' | 'swoop' | 'screech' | 'charge' | 'maul' | 'stun' | 'burrow' | 'surface' | 'warp';
 
 interface Stats {
@@ -53,7 +58,21 @@ const STATS: Record<EnemyType, Stats> = {
   // hop about and lob poison blobs that leave puddles.
   worm: { hp: 6, speed: 70, r: 6, dmg: 18, range: 0, windup: 0.7, recover: 0, score: 300, kb: 15, hy: 10, drop: 0.12 },
   slime: { hp: 4, speed: 34, r: 6, dmg: 8, range: 0, windup: 0.5, recover: 0.4, score: 200, kb: 60, hy: 5, drop: 0.12 },
+  // Wolves hunt in packs: circle you, crouch, then pounce. Crazy people zigzag about, throw junk and
+  // charge at you screaming. Imps come in swarms and flit about throwing little fireballs. Thunder
+  // rats scurry in, crackle with static, then fire a bolt of lightning along a locked line.
+  wolf: { hp: 3, speed: 60, r: 5, dmg: 13, range: 0, windup: 0.45, recover: 0.7, score: 180, kb: 80, hy: 4, drop: 0.1 },
+  madman: { hp: 5, speed: 44, r: 5, dmg: 15, range: 0, windup: 0.6, recover: 0.6, score: 260, kb: 70, hy: 6, drop: 0.15 },
+  imp: { hp: 1, speed: 66, r: 4, dmg: 7, range: 0, windup: 0.35, recover: 0, score: 140, kb: 110, hy: 13, drop: 0.05 },
+  rat: { hp: 2, speed: 72, r: 4, dmg: 13, range: 0, windup: 0.8, recover: 0.6, score: 200, kb: 100, hy: 3, drop: 0.1 },
 };
+/** Wolf pounce: how long the leap lasts and how fast it goes. */
+const WOLF = { pounce: 0.32, pounceSpeed: 210 };
+/** Crazy person: charge time and speed, stun after running into a wall, junk throw windup and damage. */
+const MAD = { charge: 0.7, chargeSpeed: 175, stun: 1, throwT: 0.4, junkDmg: 10 };
+const MAD_SHOUTS = ['SKIP AD!', 'WHERE IS THE X', 'NO COOKIES!', 'MAKE IT STOP', '5 MORE SECONDS', 'LIKE+SUBSCRIBE'];
+/** Thunder rat: aim locks this long before the bolt fires; the bolt's length; how long it's drawn. */
+const RAT = { lock: 0.25, reach: 90, flash: 0.15 };
 const WORM = { up: 1.8, rise: 0.2, sink: 0.3, spitDmg: 8 };
 /** The Glitch: warp time, how long a packet freezes you, shard and packet damage, packet speed. */
 const GLITCH = { warp: 0.4, freeze: 3, shardDmg: 9, packetDmg: 6, packetSpeed: 95 };
@@ -77,6 +96,10 @@ const COINS: Record<EnemyType, [number, number]> = {
   bear: [50, 50],
   worm: [4, 8],
   slime: [3, 6],
+  wolf: [2, 5],
+  madman: [3, 7],
+  imp: [1, 3],
+  rat: [2, 5],
 };
 /** Guaranteed gem drops (bosses); everything else drops one 3% of the time. */
 const GEMS: Partial<Record<EnemyType, number>> = { eyeball: 10, bear: 10, bat: 5 };
@@ -202,6 +225,10 @@ interface Bullet {
   packet?: boolean;
   /** Phoenix fire: a friendly fireball that homes in on the nearest enemy. */
   homing?: boolean;
+  /** Imp fireball: a small one. */
+  small?: boolean;
+  /** Crazy person junk: 0 bottle, 1 boot, 2 phone. */
+  junk?: number;
   /** Mage bolts pass through this many more enemies (never hitting the same one twice). */
   pierce?: number;
   hits?: Set<Enemy>;
@@ -232,6 +259,16 @@ interface Shock {
   x: number;
   y: number;
   t: number;
+}
+
+/** Thunder rat lightning bolt (the damage is dealt the moment it fires; this is the drawing). */
+interface Zap {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  t: number;
+  seed: number;
 }
 
 /** Slime poison puddle. */
@@ -276,6 +313,8 @@ interface Decal {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** Rounds to the nearest half game pixel, i.e. a whole canvas pixel. */
+const half = (v: number) => Math.round(v * RES) / RES;
 
 function mulberry32(seed: number) {
   return () => {
@@ -566,6 +605,7 @@ export class Game {
   private novas: Nova[] = [];
   private shocks: Shock[] = [];
   private puddles: Puddle[] = [];
+  private zaps: Zap[] = [];
   private biome: Biome = 'dungeon';
   /** Set when a boss dies; the map changes when the next wave starts. */
   private nextBiome: Biome | null = null;
@@ -597,6 +637,8 @@ export class Game {
     private input: Input,
     private ads: AdManager,
   ) {
+    canvas.width = W * RES;
+    canvas.height = H * RES;
     this.g = canvas.getContext('2d')!;
     this.g.imageSmoothingEnabled = false;
     ads.onPerk = (id) => this.applyPerk(id);
@@ -683,6 +725,7 @@ export class Game {
     this.novas = [];
     this.shocks = [];
     this.puddles = [];
+    this.zaps = [];
     this.biome = 'dungeon';
     this.nextBiome = null;
     this.novaFlash = 0;
@@ -722,7 +765,7 @@ export class Game {
   /** Enemy sprites repainted for the current map (map natives keep their own colours). */
   private enemySprite(type: EnemyType): SpriteSet {
     const tint = TINTS[this.biome];
-    if (!tint || type === 'worm' || type === 'slime' || type === 'glitch') return SPR[type];
+    if (!tint || type === 'worm' || type === 'slime' || type === 'glitch' || type === 'rat') return SPR[type];
     const key = `${this.biome}:${type}`;
     let set = this.tinted.get(key);
     if (!set) {
@@ -763,20 +806,36 @@ export class Game {
       ['troll', n >= 3 ? Math.max(1, Math.floor(n / 3)) : 0],
       ['dragon', n >= 4 ? Math.max(1, Math.floor((n - 1) / 3)) : 0],
       ['reaper', n >= 5 ? Math.max(1, Math.floor((n - 2) / 3)) : 0],
+      ['madman', n >= 2 ? Math.max(1, Math.floor(n / 4)) : 0],
+      ['rat', n >= 3 ? 2 + Math.floor((n - 3) / 3) : 0],
+      // Imps come in swarms of three, wolves in packs.
+      ['imp', n >= 4 ? 3 * Math.max(1, Math.floor((n - 1) / 4)) : 0],
+      ['wolf', n >= 5 ? 2 + Math.floor((n - 5) / 3) : 0],
       ['worm', this.biome === 'desert' ? 2 + Math.floor(n / 3) : 0],
       ['slime', this.biome === 'slime' ? 3 + Math.floor(n / 3) : 0],
       // Still the rarest enemy: often one a wave from wave 2, sometimes two from wave 7.
       ['glitch', (n >= 2 && Math.random() < Math.min(0.75, 0.3 + n * 0.05) ? 1 : 0) + (n >= 7 && Math.random() < 0.3 ? 1 : 0)],
     ];
-    const list: EnemyType[] = [];
+    let list: EnemyType[] = [];
     for (const [type, count] of counts) for (let i = 0; i < count; i++) list.push(type);
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
+    // Keep each pack of wolves and swarm of imps together so they arrive as a group.
+    for (const type of ['wolf', 'imp'] as EnemyType[]) {
+      const group = list.filter((t) => t === type);
+      list = list.filter((t) => t !== type);
+      list.splice(Math.floor(Math.random() * (list.length + 1)), 0, ...group);
+    }
     this.spawnQueue = list;
     this.spawnT = 0.6;
-    const introSub: Record<number, string> = { 2: 'sorcerers + goblins incoming', 3: 'trolls incoming', 4: 'baby dragons incoming', 5: 'reapers incoming' };
+    const introSub: Record<number, string> = {
+      2: 'sorcerers, goblins + a crazy person',
+      3: 'trolls + thunder rats incoming',
+      4: 'baby dragons + imps incoming',
+      5: 'reapers + wolf packs incoming',
+    };
     const glitchSub = list.includes('glitch') ? 's0meth1ng is gl1tch1ng' : '';
     this.banner = { text: intro ? BIOME_INTRO[this.biome][0] : `WAVE ${n}`, sub: intro || (introSub[n] ?? glitchSub), t: intro ? 3 : 2 };
     sfx.wave();
@@ -873,6 +932,14 @@ export class Game {
           y = rand(AR.y0 + 6, AR.y1 - 6);
           if (Math.hypot(x - p.x, y - p.y) > 80) break;
         }
+        // The rest of a wolf pack or imp swarm comes through right next to the first.
+        const pack = type === 'wolf' || type === 'imp';
+        const prev = this.portals[this.portals.length - 1];
+        if (pack && prev && prev.type === type && !prev.summoned) {
+          x = clamp(prev.x + rand(-18, 18), AR.x0 + 10, AR.x1 - 10);
+          y = clamp(prev.y + rand(-12, 12), AR.y0 + 6, AR.y1 - 6);
+        }
+        if (pack && this.spawnQueue[this.spawnQueue.length - 1] === type) this.spawnT = 0.2;
         // Bosses rise up on the far side of the room from the player; the bats arrive together.
         if (isBoss(type)) {
           x = p.x < W / 2 ? 240 : 80;
@@ -1549,6 +1616,14 @@ export class Game {
         [mvx, mvy] = this.aiSlime(e, dx, dy, d, dt);
       } else if (e.type === 'dragon') {
         [mvx, mvy] = this.aiDragon(e, dx, dy, d, dt);
+      } else if (e.type === 'wolf') {
+        [mvx, mvy] = this.aiWolf(e, dx, dy, d, dt);
+      } else if (e.type === 'madman') {
+        [mvx, mvy] = this.aiMadman(e, dx, dy, d, dt);
+      } else if (e.type === 'imp') {
+        [mvx, mvy] = this.aiImp(e, dx, dy, d, dt);
+      } else if (e.type === 'rat') {
+        [mvx, mvy] = this.aiRat(e, dx, dy, d, dt);
       } else if (e.type === 'reaper' && (e.state === 'chase' || e.state === 'phase')) {
         [mvx, mvy] = this.aiReaper(e, dx, dy, d, dt);
       } else if (e.type === 'glitch' && e.state !== 'windup' && e.state !== 'recover') {
@@ -1605,7 +1680,7 @@ export class Game {
       e.kx *= Math.exp(-9 * dt);
       e.ky *= Math.exp(-9 * dt);
       // Flyers flap and float even when hovering still.
-      if (e.type === 'dragon') e.anim += dt * 2;
+      if (e.type === 'dragon' || e.type === 'imp') e.anim += dt * 2;
       else if (e.type === 'reaper' || e.type === 'eyeball' || e.type === 'slime' || e.type === 'glitch') e.anim += dt;
       else if (e.type === 'bat') e.anim += dt * (e.state === 'windup' || e.state === 'screech' ? 3 : 1.6);
       else if (mvx || mvy) e.anim += dt * (e.type === 'zombie' ? 0.6 : 1);
@@ -2240,10 +2315,281 @@ export class Game {
     }
   }
 
+  /**
+   * Wolves circle you at a distance, then crouch (tracking you until the last moment) and pounce in a
+   * straight line. They back off after each leap. They come in packs, so the pounces overlap.
+   */
+  private aiWolf(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
+    const p = this.player;
+    const st = STATS.wolf;
+    switch (e.state) {
+      case 'windup':
+        e.t -= dt;
+        if (e.t > 0.12) {
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          e.face = dx < 0 ? -1 : 1;
+        }
+        if (e.t <= 0) {
+          e.state = 'charge';
+          e.t = WOLF.pounce;
+          e.combo = 0;
+          sfx.dash();
+        }
+        return [0, 0];
+      case 'charge': {
+        // `combo` marks that this pounce has already bitten.
+        e.t -= dt;
+        if (!e.combo && Math.hypot(p.x - e.x, p.y - e.y) < st.r + 7 && this.hurtPlayer(st.dmg, e.aimX, e.aimY)) {
+          e.combo = 1;
+          sfx.bite();
+        }
+        if (e.t <= 0) {
+          e.state = 'recover';
+          e.t = st.recover;
+        }
+        const k = WOLF.pounceSpeed / st.speed;
+        return [e.aimX * k, e.aimY * k];
+      }
+      case 'recover':
+        e.t -= dt;
+        if (e.t <= 0) {
+          e.state = 'chase';
+          e.atkCd = rand(1.2, 2.2) / this.difficulty;
+        }
+        return [(-dx / d) * 0.4, (-dy / d) * 0.4];
+      default: {
+        e.state = 'chase';
+        e.face = dx < 0 ? -1 : 1;
+        if (e.atkCd <= 0 && d < 60) {
+          e.state = 'windup';
+          e.t = st.windup;
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          sfx.growl();
+          return [0, 0];
+        }
+        e.strafeT -= dt;
+        if (e.strafeT <= 0) {
+          e.strafe *= -1;
+          e.strafeT = rand(0.8, 2);
+        }
+        const radial = d < 35 ? -1 : d > 55 ? 1 : 0;
+        return [(dx / d) * radial + (-dy / d) * e.strafe * 0.8, (dy / d) * radial + (dx / d) * e.strafe * 0.8];
+      }
+    }
+  }
+
+  /**
+   * The crazy person zigzags after you shouting about ads. From range he throws junk (bottles, boots,
+   * phones; `combo` picks which while winding up). Up close he screams, then charges in a straight
+   * line, flailing; running into a wall knocks him dizzy.
+   */
+  private aiMadman(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
+    const p = this.player;
+    const st = STATS.madman;
+    switch (e.state) {
+      case 'cast':
+        e.t -= dt;
+        e.face = dx < 0 ? -1 : 1;
+        if (e.t <= 0) {
+          const ox = e.x + e.face * 4;
+          const oy = e.y - 13;
+          const a = Math.atan2(p.y - 6 - oy, p.x - ox);
+          const v = 115 + this.wave * 2;
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: 3, dmg: MAD.junkDmg, life: 3, enemy: true, junk: e.combo });
+          sfx.toss();
+          e.state = 'chase';
+          e.fireCd = rand(2, 3.2) / this.difficulty;
+        }
+        return [0, 0];
+      case 'windup':
+        e.t -= dt;
+        if (e.t > 0.15) {
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          e.face = dx < 0 ? -1 : 1;
+        }
+        if (e.t <= 0) {
+          e.state = 'charge';
+          e.t = MAD.charge;
+          e.combo = 0;
+        }
+        return [0, 0];
+      case 'charge': {
+        // `combo` marks that this charge has already hit you.
+        e.t -= dt;
+        if (!e.combo && Math.hypot(p.x - e.x, p.y - e.y) < 12 && this.hurtPlayer(st.dmg, e.aimX, e.aimY)) e.combo = 1;
+        const wall = e.x <= AR.x0 + 1 || e.x >= AR.x1 - 1 || e.y <= AR.y0 + 1 || e.y >= AR.y1 - 1;
+        if (wall && e.t < MAD.charge - 0.1) {
+          e.state = 'stun';
+          e.t = MAD.stun;
+          this.burst(e.x + e.aimX * 6, e.y - 8, 8, ['#94b0c2', '#f4f4f4'], 50);
+          sfx.slam();
+          return [0, 0];
+        }
+        if (e.t <= 0) {
+          e.state = 'recover';
+          e.t = st.recover;
+        }
+        const k = MAD.chargeSpeed / st.speed;
+        return [e.aimX * k, e.aimY * k];
+      }
+      case 'stun':
+      case 'recover':
+        e.t -= dt;
+        if (e.t <= 0) {
+          e.state = 'chase';
+          e.atkCd = rand(1.5, 2.5) / this.difficulty;
+        }
+        return [0, 0];
+      default: {
+        e.state = 'chase';
+        e.face = dx < 0 ? -1 : 1;
+        e.fireCd -= dt;
+        if (Math.random() < dt * 0.2) this.texts.push({ x: e.x, y: e.y - 22, text: pick(MAD_SHOUTS), t: 1.2, color: '#f5a3c7' });
+        if (e.atkCd <= 0 && d < 70) {
+          e.state = 'windup';
+          e.t = st.windup;
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          this.texts.push({ x: e.x, y: e.y - 22, text: 'AAAAAH!', t: 0.8, color: '#ff004d' });
+          sfx.scream();
+          return [0, 0];
+        }
+        if (e.fireCd <= 0 && d > 50 && d < 170) {
+          e.state = 'cast';
+          e.t = MAD.throwT;
+          e.combo = randInt(0, 2);
+          return [0, 0];
+        }
+        // Zigzags: veers off at a random angle every fraction of a second (`strafe` is the angle here).
+        e.strafeT -= dt;
+        if (e.strafeT <= 0) {
+          e.strafe = rand(-1.3, 1.3);
+          e.strafeT = rand(0.15, 0.45);
+        }
+        const a = Math.atan2(dy, dx) + e.strafe;
+        return [Math.cos(a), Math.sin(a)];
+      }
+    }
+  }
+
+  /** Imps flit around you erratically at mid range, throwing small fireballs. */
+  private aiImp(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
+    const p = this.player;
+    const st = STATS.imp;
+    e.face = dx < 0 ? -1 : 1;
+    if (e.state === 'cast') {
+      e.t -= dt;
+      if (e.t <= 0) {
+        const ox = e.x + e.face * 5;
+        const oy = e.y - st.hy;
+        const a = Math.atan2(p.y - 6 - oy, p.x - ox);
+        const v = 115 + this.wave * 2;
+        this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: 2, dmg: st.dmg, life: 3, enemy: true, small: true });
+        sfx.fireball();
+        e.state = 'chase';
+        e.fireCd = rand(1.6, 2.8) / this.difficulty;
+      }
+      return [0, 0];
+    }
+    e.state = 'chase';
+    e.fireCd -= dt;
+    if (e.fireCd <= 0 && d < 160) {
+      e.state = 'cast';
+      e.t = st.windup;
+      if (Math.random() < 0.3) sfx.cackle();
+      return [0, 0];
+    }
+    e.strafeT -= dt;
+    if (e.strafeT <= 0) {
+      e.strafe *= -1;
+      e.strafeT = rand(0.5, 1.4);
+    }
+    const radial = d < 40 ? -1 : d > 80 ? 1 : 0;
+    // Its spawn point (tx/ty) seeds the wobble so a swarm doesn't move in lockstep.
+    const wx = Math.sin(this.time * 9 + e.tx) * 0.6;
+    const wy = Math.cos(this.time * 7 + e.ty) * 0.6;
+    return [(dx / d) * radial + (-dy / d) * e.strafe + wx, (dy / d) * radial + (dx / d) * e.strafe + wy];
+  }
+
+  /**
+   * Thunder rats scurry in short bursts to just outside melee range, then crackle with static (tracking
+   * you until `RAT.lock` before the end) and fire a bolt of lightning along that line.
+   */
+  private aiRat(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
+    const st = STATS.rat;
+    switch (e.state) {
+      case 'windup': {
+        const before = e.t;
+        e.t -= dt;
+        if (e.t > RAT.lock) {
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          e.face = dx < 0 ? -1 : 1;
+        } else if (before > RAT.lock) sfx.lock();
+        if (Math.random() < 0.5) this.particles.push({ x: e.x + rand(-6, 6), y: e.y - rand(1, 9), vx: 0, vy: 0, life: 0.1, color: pick(['#ffcd75', '#f4f4f4']), size: 1, grav: 0, floor: 999 });
+        if (e.t <= 0) {
+          this.ratZap(e);
+          e.state = 'recover';
+          e.t = st.recover;
+        }
+        return [0, 0];
+      }
+      case 'recover':
+        e.t -= dt;
+        if (e.t <= 0) {
+          e.state = 'chase';
+          e.atkCd = rand(1.4, 2.4) / this.difficulty;
+        }
+        return [0, 0];
+      default: {
+        e.state = 'chase';
+        e.face = dx < 0 ? -1 : 1;
+        if (e.atkCd <= 0 && d < RAT.reach - 15) {
+          e.state = 'windup';
+          e.t = st.windup;
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          sfx.crackle();
+          return [0, 0];
+        }
+        // Scurries in bursts: dashes, freezes, dashes (strafeT is just a per-rat phase offset here).
+        if ((this.time + e.strafeT) % 0.5 > 0.35) return [0, 0];
+        const want = d < 30 ? -1 : d > 55 ? 1 : 0;
+        return [(dx / d) * want + (-dy / d) * e.strafe * 0.6, (dy / d) * want + (dx / d) * e.strafe * 0.6];
+      }
+    }
+  }
+
+  /** Where a thunder rat's bolt comes from: its nose. */
+  private ratNose(e: Enemy) {
+    return { x: e.x + e.face * 6, y: e.y - 4 };
+  }
+
+  /** Fires a thunder rat's bolt along its locked aim: anything on the line takes the hit at once. */
+  private ratZap(e: Enemy) {
+    const p = this.player;
+    const o = this.ratNose(e);
+    const x1 = clamp(o.x + e.aimX * RAT.reach, 6, W - 6);
+    const y1 = clamp(o.y + e.aimY * RAT.reach, 30, H - 4);
+    this.zaps.push({ x0: o.x, y0: o.y, x1, y1, t: RAT.flash, seed: Math.floor(Math.random() * 1e6) });
+    this.burst(x1, y1, 6, ['#ffcd75', '#f4f4f4'], 50);
+    sfx.zap();
+    // Distance from the player's middle to the bolt's line segment.
+    const lx = x1 - o.x;
+    const ly = y1 - o.y;
+    const k = clamp(((p.x - o.x) * lx + (p.y - 6 - o.y) * ly) / (lx * lx + ly * ly || 1), 0, 1);
+    if (Math.hypot(o.x + lx * k - p.x, o.y + ly * k - (p.y - 6)) < 7) this.hurtPlayer(STATS.rat.dmg, e.aimX, e.aimY);
+  }
+
   /** How high a flyer floats above its shadow. */
   private lift(e: Enemy) {
     if (e.type === 'dragon') return 5 + Math.round(Math.sin(e.anim * 2.5) * 1.5);
     if (e.type === 'reaper') return 2 + Math.round(Math.sin(e.anim * 3));
+    if (e.type === 'imp') return 7 + Math.round(Math.sin(e.anim * 4) * 2);
+    if (e.type === 'wolf' && e.state === 'charge') return Math.round(Math.sin((1 - e.t / WOLF.pounce) * Math.PI) * 5);
     if (e.type === 'eyeball') return 10 + Math.round(Math.sin(e.anim * 2) * 2);
     if (e.type === 'slime') {
       const h = e.anim % 0.8;
@@ -2440,12 +2786,13 @@ export class Game {
         if (b.sonic) this.burst(b.x, b.y, 3, ['#f5a3c7', '#8a3f9e'], 30);
         else if (b.sand) this.burst(b.x, b.y, 3, ['#bf9562', '#7a5636'], 30);
         else if (b.shard || b.packet) this.burst(b.x, b.y, 4, ['#ff004d', '#73eff7', '#8a3f9e'], 30);
+        else if (b.junk !== undefined) this.burst(b.x, b.y, 4, ['#94b0c2', '#f4f4f4', '#8b5a3c'], 30);
         else if (!b.flame) this.burst(b.x, b.y, 4, b.tear ? ['#3b5dc9', '#73eff7'] : b.enemy ? ['#ef7d57', '#ffcd75'] : ['#41a6f6', '#73eff7'], 30);
         continue;
       }
       if (b.enemy) {
         if ((b.shard || b.packet) && Math.random() < 0.5) this.particles.push({ x: b.x + rand(-3, 3), y: b.y + rand(-3, 3), vx: 0, vy: 0, life: 0.15, color: pick(['#ff004d', '#73eff7', '#8a3f9e']), size: 1, grav: 0, floor: 999 });
-        else if (!b.flame && !b.sonic && !b.sand && !b.shard && !b.packet && Math.random() < 0.5) this.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, color: pick(b.tear ? ['#3b5dc9', '#73eff7', '#29366f'] : ['#ef7d57', '#ffcd75', '#b13e53']), size: 1, grav: 0, floor: 999 });
+        else if (!b.flame && !b.sonic && !b.sand && !b.shard && !b.packet && b.junk === undefined && Math.random() < 0.5) this.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, color: pick(b.tear ? ['#3b5dc9', '#73eff7', '#29366f'] : ['#ef7d57', '#ffcd75', '#b13e53']), size: 1, grav: 0, floor: 999 });
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - (p.y - 6)) < b.r + 4) {
           b.life = 0;
           const d = Math.hypot(b.vx, b.vy) || 1;
@@ -2538,6 +2885,10 @@ export class Game {
       bear: ['#8b5a3c', '#5d275d', '#a7f070', '#f4f4f4'],
       worm: ['#ef7d57', '#8b5a3c', '#ffcd75'],
       slime: ['#a7f070', '#38b764', '#257179'],
+      wolf: ['#566c86', '#333c57', '#94b0c2', '#b13e53'],
+      madman: ['#f4f4f4', '#e8b796', '#94b0c2', '#b13e53'],
+      imp: ['#b13e53', '#ff004d', '#5d275d', '#ffcd75'],
+      rat: ['#ffcd75', '#ef7d57', '#f4f4f4'],
     };
     const boss = isBoss(e.type);
     if (boss) {
@@ -2620,6 +2971,8 @@ export class Game {
     this.slashes = this.slashes.filter((s) => s.t > 0);
     for (const s of this.shocks) s.t -= dt;
     this.shocks = this.shocks.filter((s) => s.t > 0);
+    for (const z of this.zaps) z.t -= dt;
+    this.zaps = this.zaps.filter((z) => z.t > 0);
     for (const t of this.texts) {
       t.t -= dt;
       t.y -= 15 * dt;
@@ -2641,9 +2994,10 @@ export class Game {
 
   render() {
     const g = this.g;
+    g.setTransform(RES, 0, 0, RES, 0, 0);
     g.save();
     if (this.shake > 0) g.translate(Math.round(rand(-this.shake, this.shake)), Math.round(rand(-this.shake, this.shake)));
-    g.drawImage(this.background, 0, 0);
+    this.blit(this.background, 0, 0);
     this.drawTorches();
 
     if (this.state === 'title') {
@@ -2664,7 +3018,7 @@ export class Game {
     for (const s of this.shocks) this.drawShock(s);
     for (const k of this.pickups) {
       if (k.t < 2 && Math.floor(k.t * 8) % 2) continue;
-      g.drawImage(HEART, Math.round(k.x - 3), Math.round(k.y - 8 + Math.sin(this.time * 5) * 1.5));
+      this.blit(HEART, half(k.x - 3), half(k.y - 8 + Math.sin(this.time * 5) * 1.5));
     }
 
     const drawables: { y: number; draw: () => void }[] = this.enemies.map((e) => ({ y: e.y, draw: () => this.drawEnemy(e) }));
@@ -2677,16 +3031,18 @@ export class Game {
 
     for (const n of this.novas) this.drawNova(n);
     for (const b of this.bullets) this.drawBullet(b);
+    for (const z of this.zaps) this.drawZap(z);
+    for (const e of this.enemies) if (e.type === 'rat' && e.state === 'windup' && e.t <= RAT.lock) this.drawZapSight(e);
     for (const pt of this.particles) {
       g.fillStyle = pt.color;
-      g.fillRect(Math.round(pt.x), Math.round(pt.y), pt.size, pt.size);
+      g.fillRect(half(pt.x), half(pt.y), pt.size, pt.size);
     }
     for (const s of this.slashes) this.drawSlash(s);
     for (const t of this.texts) {
       const x = Math.round(t.x);
       const y = Math.round(t.y);
       this.text(t.text, x, y, t.color, 'center');
-      if (t.icon) g.drawImage(ICONS[t.icon], x - t.text.length * 4 - 10, y);
+      if (t.icon) this.blit(ICONS[t.icon], x - t.text.length * 4 - 10, y);
     }
     g.restore();
 
@@ -2749,7 +3105,7 @@ export class Game {
   private drawSet(set: SpriteSet, frame: number, face: number, x: number, y: number, white: boolean) {
     const frames = white ? (face < 0 ? set.wl : set.wr) : face < 0 ? set.l : set.r;
     const img = frames[frame];
-    this.g.drawImage(img, Math.round(x - img.width / 2), Math.round(y - img.height + 1));
+    this.blit(img, half(x - img.width / 2), half(y - img.height + 1));
   }
 
   private shadow(x: number, y: number, w: number) {
@@ -2759,12 +3115,24 @@ export class Game {
     g.fillRect(Math.round(x - w / 2 + 1), Math.round(y - 1), w - 2, 1);
   }
 
-  /** Draws a 1px line pixel by pixel to keep things crisp. */
+  /** Draws a 1px line pixel by pixel to keep things crisp, stepping in half pixels so diagonals are smooth. */
   private pixelLine(x0: number, y0: number, x1: number, y1: number, color: string) {
     const g = this.g;
     g.fillStyle = color;
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
-    for (let k = 0; k <= n; k++) g.fillRect(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), 1, 1);
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1) * RES;
+    for (let k = 0; k <= n; k++) g.fillRect(half(x0 + ((x1 - x0) * k) / n), half(y0 + ((y1 - y0) * k) / n), 1, 1);
+  }
+
+  /** Draws a sprite canvas at a game-pixel position and size, using its smoothed double-size copy. */
+  private blit(img: HTMLCanvasElement, x: number, y: number, w = img.width, h = img.height) {
+    this.g.drawImage(hd(img), x, y, w, h);
+  }
+
+  /** Draws rows `sy` to `sy + sh` of a sprite (used to tear sprites apart for glitch effects). */
+  private blitRows(img: HTMLCanvasElement, sy: number, sh: number, x: number, y: number) {
+    const src = hd(img);
+    const k = src.width / img.width;
+    this.g.drawImage(src, 0, sy * k, src.width, sh * k, x, y, img.width, sh);
   }
 
   private drawPlayer() {
@@ -2789,7 +3157,7 @@ export class Game {
       const rng = mulberry32(Math.floor(this.time * 15));
       for (let k = 0; k < 3; k++) {
         const sy = Math.floor(rng() * img.height);
-        g.drawImage(img, 0, sy, img.width, 2, x0 + Math.round((rng() * 2 - 1) * 4), y0 + sy, img.width, 2);
+        this.blitRows(img, sy, 2, x0 + Math.round((rng() * 2 - 1) * 4), y0 + sy);
       }
       g.fillStyle = Math.floor(this.time * 15) % 2 ? 'rgba(255,0,77,0.35)' : 'rgba(115,239,247,0.35)';
       g.fillRect(x0 + 2, y0 + Math.floor(rng() * img.height), img.width - 4, 2);
@@ -2854,7 +3222,7 @@ export class Game {
     } else if (pet.kind === 'wolf') {
       this.shadow(pet.x, pet.y, 12);
       const hop = pet.breathT > 0 ? 4 : 0;
-      this.drawSet(SPR.wolf, pet.breathT > 0 ? 1 : Math.floor(pet.anim * 8) % 2, pet.face, pet.x, pet.y - hop, false);
+      this.drawSet(SPR.petWolf, pet.breathT > 0 ? 1 : Math.floor(pet.anim * 8) % 2, pet.face, pet.x, pet.y - hop, false);
       top = pet.y - hop - 12;
     } else {
       this.shadow(pet.x, pet.y, 10);
@@ -2965,7 +3333,8 @@ export class Game {
     // Reapers fade out, then back in somewhere else.
     if (e.state === 'phase') g.globalAlpha = clamp(Math.abs(e.t - PHASE / 2) / (PHASE / 2), 0.1, 1);
     if (e.state === 'warp') g.globalAlpha = Math.floor(this.time * 30) % 2 ? 0.2 : 0.8;
-    this.shadow(e.x, e.y, e.type === 'troll' ? 18 : e.type === 'zombie' ? 12 : e.type === 'goblin' ? 8 : 10);
+    const shadows: Partial<Record<EnemyType, number>> = { troll: 18, zombie: 12, wolf: 12, goblin: 8, rat: 8, imp: 6 };
+    this.shadow(e.x, e.y, shadows[e.type] ?? 10);
     const frame = Math.floor(e.anim * 6) % 2;
     let ox = 0;
     let oy = 0;
@@ -2976,7 +3345,13 @@ export class Game {
       else oy = -Math.min(4, Math.round(Math.hypot(e.kx, e.ky) / 40));
     }
     if (e.type === 'dragon' && e.state === 'breathe') ox = Math.floor(this.time * 30) % 2 ? -e.face : 0;
-    this.drawSet(this.enemySprite(e.type), e.type === 'slime' ? this.slimeFrame(e) : frame, e.face, e.x + ox, e.y - lift + oy, white);
+    // Wolves crouch before a pounce; crazy people shake all over while charging.
+    if (e.type === 'wolf' && e.state === 'windup') oy = 1;
+    if (e.type === 'madman' && e.state === 'charge') ox = Math.floor(this.time * 30) % 2 ? 1 : -1;
+    // Thunder rats flash white with static once they've locked on.
+    const sparking = e.type === 'rat' && e.state === 'windup' && (e.t <= RAT.lock || Math.floor(this.time * 12) % 2 === 0);
+    const fr = e.type === 'slime' ? this.slimeFrame(e) : e.type === 'wolf' && e.state === 'charge' ? 1 : frame;
+    this.drawSet(this.enemySprite(e.type), fr, e.face, e.x + ox, e.y - lift + oy, white || (sparking && Math.floor(this.time * 20) % 2 === 0));
     if (e.type === 'glitch') this.drawGlitchNoise(e, frame, e.state === 'warp' || e.state === 'cast' ? 4 : 1);
 
     if (e.type === 'skeleton') {
@@ -3029,6 +3404,15 @@ export class Game {
       this.drawClub(e);
     } else if (e.type === 'reaper') {
       this.drawScythe(e, e.x + e.face * 5, e.y - 8 - lift);
+    } else if (e.type === 'madman') {
+      this.drawMadman(e, ox);
+    } else if (e.type === 'imp' && e.state === 'cast') {
+      // A fireball growing in its claw.
+      const f = Math.floor(this.time * 20) % 2;
+      const hx = Math.round(e.x + e.face * 5);
+      const hy = Math.round(e.y - lift - 9);
+      g.fillStyle = f ? '#ef7d57' : '#ffcd75';
+      g.fillRect(hx - 1, hy - 1, 2 + f, 2 + f);
     } else if (e.type === 'dragon' && (e.state === 'windup' || e.state === 'breathe')) {
       // Glowing mouth: flickers while breathing in, white-hot while breathing fire.
       const m = this.dragonMouth(e);
@@ -3073,7 +3457,7 @@ export class Game {
       const sy = Math.floor(rng() * img.height);
       const sh = 1 + Math.floor(rng() * 2);
       const shift = Math.round((rng() * 2 - 1) * 4);
-      if (rng() < 0.5 || amount > 1) g.drawImage(img, 0, sy, img.width, sh, x0 + shift, y0 + sy, img.width, sh);
+      if (rng() < 0.5 || amount > 1) this.blitRows(img, sy, sh, x0 + shift, y0 + sy);
     }
     for (let k = 0; k < amount + 1; k++) {
       g.fillStyle = rng() < 0.5 ? '#ff004d' : '#73eff7';
@@ -3178,12 +3562,102 @@ export class Game {
       g.fillStyle = Math.floor(this.time * 20) % 2 ? '#ff004d' : '#f4f4f4';
       for (let k = 12; k < 120; k += 4) g.fillRect(Math.round(e.x + e.aimX * k), Math.round(e.y - 4 + e.aimY * k), 1, 1);
     }
+    if (e.state === 'stun') this.drawDizzy(e.x, e.y - 21, 8);
+  }
+
+  /** Stars circling a stunned head. */
+  private drawDizzy(x: number, y: number, r: number) {
+    const g = this.g;
+    g.fillStyle = '#ffcd75';
+    for (let k = 0; k < 3; k++) {
+      const a = this.time * 6 + (k * Math.PI * 2) / 3;
+      g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * 2), 2, 2);
+    }
+  }
+
+  /** Crazy person's arms: waving about, flailing wildly in a charge, or holding junk up to throw. */
+  private drawMadman(e: Enemy, ox: number) {
+    const x = e.x + ox;
+    const sy = e.y - 9;
+    if (e.state === 'cast') {
+      const hx = Math.round(x + e.face * 3);
+      const hy = Math.round(sy - 9);
+      this.pixelLine(x + e.face * 5, sy, hx, hy + 2, '#e8b796');
+      this.drawJunk(e.combo, hx, hy, 0);
+      return;
+    }
     if (e.state === 'stun') {
-      g.fillStyle = '#ffcd75';
-      for (let k = 0; k < 3; k++) {
-        const a = this.time * 6 + (k * Math.PI * 2) / 3;
-        g.fillRect(Math.round(e.x + Math.cos(a) * 8), Math.round(e.y - 21 + Math.sin(a) * 2), 2, 2);
-      }
+      this.drawDizzy(e.x, e.y - 20, 6);
+      return;
+    }
+    // Arms up and waving; much faster while charging.
+    const speed = e.state === 'charge' || e.state === 'windup' ? 24 : 6;
+    const f = Math.floor(this.time * speed) % 2;
+    for (const side of [-1, 1]) {
+      const up = (f === 0) === (side > 0) ? 6 : 3;
+      this.pixelLine(x + side * 6, sy, x + side * 8, sy - up, '#e8b796');
+    }
+  }
+
+  /** Thrown junk: a bottle, a boot or a phone (still playing an ad), tumbling end over end. */
+  private drawJunk(kind: number, x: number, y: number, spin: number) {
+    const g = this.g;
+    const flat = Math.floor(spin) % 2 === 1;
+    const [w, h] = flat ? [5, 3] : [3, 5];
+    const cx = Math.round(x - w / 2);
+    const cy = Math.round(y - h / 2);
+    g.fillStyle = '#1a1c2c';
+    g.fillRect(cx - 1, cy - 1, w + 2, h + 2);
+    if (kind === 0) {
+      g.fillStyle = '#38b764';
+      g.fillRect(cx, cy, w, h);
+      g.fillStyle = '#a7f070';
+      g.fillRect(cx, cy, 1, 1);
+    } else if (kind === 1) {
+      g.fillStyle = '#8b5a3c';
+      g.fillRect(cx, cy, w, h);
+      g.fillStyle = '#5d275d';
+      g.fillRect(cx, flat ? cy + h - 1 : cy, flat ? w : 1, 1);
+    } else {
+      g.fillStyle = '#333c57';
+      g.fillRect(cx, cy, w, h);
+      g.fillStyle = Math.floor(this.time * 8) % 2 ? '#ff004d' : '#41a6f6';
+      g.fillRect(cx + 1, cy + 1, w - 2, h - 2);
+    }
+  }
+
+  /** A thunder rat's bolt: a jagged line that re-jags every couple of frames, white inside yellow. */
+  private drawZap(z: Zap) {
+    const len = Math.hypot(z.x1 - z.x0, z.y1 - z.y0) || 1;
+    const nx = -(z.y1 - z.y0) / len;
+    const ny = (z.x1 - z.x0) / len;
+    const rng = mulberry32(z.seed + Math.floor(this.time * 30));
+    const n = Math.max(2, Math.round(len / 10));
+    const pts: [number, number][] = [[z.x0, z.y0]];
+    for (let k = 1; k < n; k++) {
+      const j = (rng() * 2 - 1) * 4;
+      pts.push([z.x0 + ((z.x1 - z.x0) * k) / n + nx * j, z.y0 + ((z.y1 - z.y0) * k) / n + ny * j]);
+    }
+    pts.push([z.x1, z.y1]);
+    for (let k = 1; k < pts.length; k++) {
+      const [ax, ay] = pts[k - 1];
+      const [bx, by] = pts[k];
+      this.pixelLine(ax, ay + 1, bx, by + 1, '#ef7d57');
+      this.pixelLine(ax, ay - 1, bx, by - 1, '#ffcd75');
+      this.pixelLine(ax, ay, bx, by, '#f4f4f4');
+    }
+  }
+
+  /** A locked-on thunder rat shows exactly where the bolt will go. */
+  private drawZapSight(e: Enemy) {
+    const g = this.g;
+    const o = this.ratNose(e);
+    g.fillStyle = Math.floor(this.time * 20) % 2 ? '#ffcd75' : '#f4f4f4';
+    for (let k = 4; k < RAT.reach; k += 3) {
+      const x = o.x + e.aimX * k;
+      const y = o.y + e.aimY * k;
+      if (x < 6 || x > W - 6 || y < 30 || y > H - 4) break;
+      g.fillRect(Math.round(x), Math.round(y), 1, 1);
     }
   }
 
@@ -3415,6 +3889,14 @@ export class Game {
         g.fillStyle = '#5d275d';
         g.fillRect(Math.round(b.x - Math.cos(ang) * 6 + Math.cos(ang + a) * 5), Math.round(b.y - Math.sin(ang) * 6 + Math.sin(ang + a) * 5), 1, 1);
       }
+    } else if (b.junk !== undefined) {
+      this.drawJunk(b.junk, b.x, b.y, (3 - b.life) * 14);
+    } else if (b.small) {
+      // Imp fireball.
+      g.fillStyle = '#b13e53';
+      g.fillRect(x - 2, y - 2, 4, 4);
+      g.fillStyle = Math.floor(this.time * 20) % 2 ? '#ffcd75' : '#ef7d57';
+      g.fillRect(x - 1, y - 1, 2, 2);
     } else if (b.homing) {
       g.fillStyle = '#ef7d57';
       g.fillRect(x - 2, y - 2, 4, 4);
@@ -3589,6 +4071,38 @@ export class Game {
       g.fillRect(x + 7, y - 1, 3, 1);
       g.fillStyle = '#f4f4f4';
       g.fillRect(x + 9, y - 2, 2, 1);
+    } else if (d.type === 'wolf') {
+      // A tuft of dark fur.
+      g.fillStyle = '#333c57';
+      g.fillRect(x - 5, y - 1, 10, 2);
+      g.fillRect(x - 3, y - 2, 6, 1);
+      g.fillStyle = '#566c86';
+      g.fillRect(x - 2, y - 1, 3, 1);
+      g.fillStyle = '#b13e53';
+      g.fillRect(x + 3, y, 2, 1);
+    } else if (d.type === 'madman') {
+      // All that's left is the tinfoil hat.
+      g.fillStyle = '#94b0c2';
+      g.fillRect(x - 3, y - 1, 7, 1);
+      g.fillRect(x - 2, y - 2, 5, 1);
+      g.fillRect(x - 1, y - 3, 3, 1);
+      g.fillStyle = '#f4f4f4';
+      g.fillRect(x, y - 4, 1, 1);
+      g.fillRect(x - 1, y - 2, 1, 1);
+    } else if (d.type === 'imp') {
+      // A puff of sooty ash with an ember in it.
+      g.fillStyle = '#333c57';
+      g.fillRect(x - 3, y - 1, 6, 2);
+      g.fillStyle = Math.floor(this.time * 4 + x) % 2 ? '#ef7d57' : '#b13e53';
+      g.fillRect(x, y - 1, 1, 1);
+    } else if (d.type === 'rat') {
+      // A scorch mark that still sparks now and then.
+      g.fillStyle = '#1a1c2c';
+      g.fillRect(x - 4, y - 1, 8, 2);
+      if (Math.floor(this.time * 5 + x) % 4 === 0) {
+        g.fillStyle = '#ffcd75';
+        g.fillRect(x - 1 + (Math.floor(this.time * 13) % 3), y - 2, 1, 1);
+      }
     } else if (d.type === 'eyeball') {
       // A big gooey puddle with the pupil still staring up at you.
       g.fillStyle = '#5d275d';
@@ -3633,9 +4147,9 @@ export class Game {
     this.text(String(this.score).padStart(6, '0'), 76, 2, '#ffcd75');
     this.text(`WAVE ${Math.max(1, this.wave)}`, 130, 2, '#94b0c2');
     this.text(`ADS ${this.ads.watched}`, 190, 2, '#ff004d');
-    g.drawImage(ICONS.coin, 242, 2);
+    this.blit(ICONS.coin, 242, 2);
     this.text(String(this.coins), 251, 2, '#ffcd75');
-    g.drawImage(ICONS.gem, 283, 2);
+    this.blit(ICONS.gem, 283, 2);
     this.text(String(this.gems), 292, 2, '#73eff7');
     if (sfx.muted) this.text('MUTE', W - 3, 14, '#566c86', 'right');
     const bosses = this.enemies.filter((e) => isBoss(e.type));
@@ -3660,7 +4174,6 @@ export class Game {
   }
 
   private drawTitle() {
-    const g = this.g;
     this.dim(0.55);
     const hue = Math.floor(this.time * 4) % 3;
     const titleCols = ['#ff004d', '#ffcd75', '#73eff7'];
@@ -3678,6 +4191,10 @@ export class Game {
       ['glitch', 'THE GLITCH', 'RARE', 'FREEZES YOU'],
       ['worm', 'SANDWORM', 'DESERT', 'BURROWS'],
       ['slime', 'SLIME', 'SLIME LAND', 'POISON'],
+      ['madman', 'CRAZY PERSON', 'ERRATIC', 'THROWS JUNK'],
+      ['rat', 'THUNDER RAT', 'SMALL', 'LIGHTNING'],
+      ['imp', 'IMP', 'SWARMS', 'FIREBALLS'],
+      ['wolf', 'WOLF', 'PACKS', 'POUNCES'],
     ];
     // Three at a time, rotating through the whole cast.
     const first = Math.floor(this.time / 2.5) * 3;
@@ -3686,7 +4203,7 @@ export class Game {
       const cx = 60 + idx * 100;
       const frame = Math.floor(this.time * 3 + idx) % 2;
       const img = SPR[type].r[frame];
-      g.drawImage(img, cx - img.width, 86 - img.height * 2, img.width * 2, img.height * 2);
+      this.blit(img, cx - img.width, 86 - img.height * 2, img.width * 2, img.height * 2);
       this.text(name, cx, 92, '#f4f4f4', 'center');
       this.text(a, cx, 104, '#ffcd75', 'center');
       this.text(b, cx, 114, '#ffcd75', 'center');
@@ -3698,9 +4215,9 @@ export class Game {
     if (Math.floor(this.time * 2) % 2 === 0) this.text('CLICK OR ENTER TO START', W / 2, 161, '#f4f4f4', 'center');
     this.text(`S SHOP & HEROES   HERO: ${this.hero.name}`, W / 2, 171, '#566c86', 'center');
     if (this.best) this.text(`BEST ${this.best}`, W - 4, 2, '#566c86', 'right');
-    g.drawImage(ICONS.coin, 4, 2);
+    this.blit(ICONS.coin, 4, 2);
     this.text(String(this.save.coins), 14, 2, '#ffcd75');
-    g.drawImage(ICONS.gem, 4, 12);
+    this.blit(ICONS.gem, 4, 12);
     this.text(String(this.save.gems), 14, 12, '#73eff7');
     if (this.threat) this.text(`THREAT +${this.threat * 5}%`, 4, 22, '#ff004d');
   }
@@ -3729,9 +4246,9 @@ export class Game {
     const g = this.g;
     this.dim(0.8);
     this.text('SHOP', W / 2, 3, '#ffcd75', 'center', 16);
-    g.drawImage(ICONS.gem, 8, 5);
+    this.blit(ICONS.gem, 8, 5);
     this.text(String(this.save.gems), 18, 5, '#73eff7');
-    g.drawImage(ICONS.coin, W - 12 - String(this.save.coins).length * 8 - 10, 5);
+    this.blit(ICONS.coin, W - 12 - String(this.save.coins).length * 8 - 10, 5);
     this.text(String(this.save.coins), W - 12, 5, '#ffcd75', 'right');
     SHOP_TABS.forEach((name, idx) => {
       const cx = W / 4 + (idx * W) / 2;
@@ -3752,7 +4269,7 @@ export class Game {
       }
       this.text(name, 20, y, sel ? '#f4f4f4' : '#94b0c2');
       this.text(right, W - 12, y, rightColor, 'right');
-      if (icon) g.drawImage(ICONS[icon], W - 12 - right.length * 8 - 10, y);
+      if (icon) this.blit(ICONS[icon], W - 12 - right.length * 8 - 10, y);
     };
     let desc: string;
     if (this.shopTab === 0) {
@@ -3779,7 +4296,7 @@ export class Game {
       desc = h.desc;
       // A big preview of the highlighted hero, with their stats.
       const img = HERO_SPRITES[h.id].r[Math.floor(this.time * 3) % 2];
-      g.drawImage(img, 120, 82, img.width * 3, img.height * 3);
+      this.blit(img, 120, 82, img.width * 3, img.height * 3);
       this.text(`HP ${h.hp}`, 180, 88, '#f4f4f4');
       this.text(`SPEED ${h.speed}`, 180, 99, '#f4f4f4');
       this.text(`DAMAGE x${h.dmg}`, 180, 110, '#f4f4f4');

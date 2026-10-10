@@ -114,6 +114,11 @@ class Sfx {
   roar() { this.noise(0.6, 0.25, 500); this.tone(110, 0.6, 'sawtooth', 0.12, 60); }
   howl() { this.tone(500, 0.3, 'triangle', 0.05, 800); }
   glitch() { [880, 220, 1760, 440].forEach((f, i) => this.tone(f, 0.04, 'square', 0.05, undefined, i * 0.04)); this.noise(0.15, 0.08, 6000); }
+  growl() { this.tone(90, 0.35, 'sawtooth', 0.07, 70); this.noise(0.3, 0.06, 500); }
+  scream() { this.tone(900, 0.5, 'sawtooth', 0.06, 1500); this.tone(950, 0.5, 'square', 0.03, 1400); }
+  cackle() { [1100, 1500, 1050, 1600].forEach((f, i) => this.tone(f, 0.05, 'triangle', 0.05, undefined, i * 0.07)); }
+  crackle() { this.noise(0.5, 0.06, 7000); this.tone(2000, 0.5, 'square', 0.02, 3000); }
+  zap() { this.noise(0.25, 0.22, 5000); this.tone(1800, 0.2, 'sawtooth', 0.07, 150); }
   breath() { this.noise(0.8, 0.14, 1800); this.tone(140, 0.8, 'sawtooth', 0.04, 90); }
 
   /** The deliberately obnoxious ad jingle. */

@@ -1,6 +1,6 @@
 // The whole point of the game: every kill earns you an ad, and every ad fights back.
 
-import { ICONS, type IconName } from './sprites';
+import { ICONS, hd, type IconName } from './sprites';
 import { sfx } from './audio';
 
 export type AdSource =
@@ -17,6 +17,10 @@ export type AdSource =
   | 'bear'
   | 'worm'
   | 'slime'
+  | 'wolf'
+  | 'madman'
+  | 'imp'
+  | 'rat'
   | 'premium'
   | 'death'
   | 'bonus';
@@ -47,7 +51,7 @@ interface Creative {
   fine: string;
 }
 
-const ANY: AdSource[] = ['skeleton', 'zombie', 'sorcerer', 'goblin', 'troll', 'reaper', 'glitch', 'dragon', 'eyeball', 'bat', 'bear', 'worm', 'slime', 'bonus'];
+const ANY: AdSource[] = ['skeleton', 'zombie', 'sorcerer', 'goblin', 'troll', 'reaper', 'glitch', 'dragon', 'eyeball', 'bat', 'bear', 'worm', 'slime', 'wolf', 'madman', 'imp', 'rat', 'bonus'];
 
 const CREATIVES: Creative[] = [
   { tags: ['skeleton'], headline: 'HOT SKELETONS IN YOUR AREA', body: "They're 2 metres away and ready to RATTLE.", cta: 'MEET THEM', icon: 'skeleton', fine: '*Skeletons may be armed. And dangerous. Mostly armed.' },
@@ -90,6 +94,18 @@ const CREATIVES: Creative[] = [
   { tags: ['slime'], headline: 'SLIME SKINCARE', body: 'Glowing skin in 3 days! (It is the slime glowing.)', cta: 'GET GLOWING', icon: 'slime', fine: 'Do not apply to open wounds. Or closed ones.' },
   { tags: ['slime'], headline: 'STUCK? WE CAN HELP', body: 'Our lawyers specialise in slime-related accidents.', cta: 'CALL NOW', icon: 'slime', fine: 'No win, no fee. Mostly no win.' },
   { tags: ['slime'], headline: 'ADOPT A SLIME', body: 'Low maintenance! Eats anything! Including you!', cta: 'ADOPT', icon: 'slime', fine: 'Slime will not fit in a normal home. Or a normal anything.' },
+  { tags: ['wolf'], headline: 'LONELY? JOIN A PACK', body: 'Wolves near you are looking for a new member. Bring snacks. Be snacks.', cta: 'JOIN PACK', icon: 'wolf', fine: 'Pack dues payable in limbs.' },
+  { tags: ['wolf'], headline: 'HOWL-O-GRAM', body: 'Send a singing wolf to someone you love! They will never forget it.', cta: 'SEND ONE', icon: 'wolf', fine: 'They will also never stop running.' },
+  { tags: ['wolf'], headline: 'KIBBLE RECALL', body: 'Our Big Bad Kibble may contain traces of grandma.', cta: 'CHECK BATCH', icon: 'wolf', fine: 'Red hoods sold separately.' },
+  { tags: ['madman'], headline: 'HE WATCHED 10,000 ADS', body: 'Now he lives in a dungeon and throws phones. Watch ad 10,001 to find out why!', cta: 'WATCH NEXT', icon: 'madman', fine: 'This could be you. Keep watching.' },
+  { tags: ['madman'], headline: 'TINFOIL HATS 2 FOR 1', body: 'Blocks 100% of ads*. Doctors are BAFFLED.', cta: 'BUY 2', icon: 'madman', fine: '*Does not block ads.' },
+  { tags: ['madman'], headline: 'ARE YOU STILL WATCHING?', body: 'He is. He has been since 2009. Please help him.', cta: 'YES', icon: 'madman', fine: 'Pressing YES plays another ad.' },
+  { tags: ['imp'], headline: 'IMP-ROVE YOUR LIFE', body: 'Small, red and full of bad ideas: the life coach for you.', cta: 'GET COACHED', icon: 'imp', fine: 'Sessions held in a lake of fire.' },
+  { tags: ['imp'], headline: 'MISCHIEF INSURANCE', body: 'Imps broke your stuff? Of course they did. They broke ours too.', cta: 'CLAIM', icon: 'imp', fine: 'All claims are processed by imps.' },
+  { tags: ['imp'], headline: 'SPICY WINGS', body: 'Fresh from the underworld. 100% real imp.', cta: 'ORDER', icon: 'imp', fine: 'Allergens: brimstone, sulfur, malice.' },
+  { tags: ['rat'], headline: 'GOTTA ZAP EM ALL', body: 'Collect all 1 thunder rats! Booster packs out now.', cta: 'BUY PACKS', icon: 'rat', fine: 'Packs contain no rats. Rats contain thunder.' },
+  { tags: ['rat'], headline: 'FREE ELECTRICITY', body: 'Power your whole home with ONE angry rat. Energy firms hate it.', cta: 'GO GREEN', icon: 'rat', fine: 'Rat may object. Rat will object.' },
+  { tags: ['rat'], headline: 'PEST CONTROL', body: 'Thunder rats? We will be right there. From a safe distance.', cta: 'CALL NOW', icon: 'rat', fine: 'Technician is wearing rubber everything.' },
   { tags: ANY, headline: 'DOWNLOAD MORE HP', body: '100% legit. No viruses. Probably.', cta: 'DOWNLOAD', icon: 'heart', fine: 'May contain viruses.' },
   { tags: ANY, headline: 'CONGRATULATIONS!!!', body: 'You are the 1,000,000th hero! Claim your FREE sword now!', cta: 'CLAIM PRIZE', icon: 'coin', fine: 'You are also the 999,999th and 1,000,001st hero.' },
   { tags: ANY, headline: 'YOUR PC HAS (3) CURSES', body: "Scan now with HexDefender PRO before it's too late.", cta: 'SCAN NOW', icon: 'sorcerer', fine: 'HexDefender PRO is the curse.' },
@@ -168,7 +184,8 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: strin
 }
 
 function icon(name: IconName, cls: string): HTMLCanvasElement {
-  const src = ICONS[name];
+  // The overlay is 2x, so the smoothed double-size icon fits it exactly.
+  const src = hd(ICONS[name]);
   const c = h('canvas', cls);
   c.width = src.width;
   c.height = src.height;
@@ -766,10 +783,11 @@ export class AdManager {
       ['skeleton', 'SKELETONS'],
       ['zombie', 'ZOMBIES'],
       ['goblin', 'GOBLINS'],
+      ['rat', 'RATS'],
       ['coin', 'COINS'],
       ['heart', 'HEARTS'],
     ]);
-    const others: IconName[] = (['skeleton', 'zombie', 'goblin', 'sorcerer', 'coin', 'heart', 'potion', 'cookie', 'brain', 'gem', 'bat', 'slime'] as IconName[]).filter((n) => n !== target);
+    const others: IconName[] = (['skeleton', 'zombie', 'goblin', 'sorcerer', 'coin', 'heart', 'potion', 'cookie', 'brain', 'gem', 'bat', 'slime', 'rat', 'imp', 'wolf'] as IconName[]).filter((n) => n !== target);
     let fakeFails = Math.random() < Math.min(0.9, 0.4 + this.level * 0.06) ? 1 : 0;
     const msg = h('p', '', `Select all squares with ${label}.`);
     const grid = h('div', 'captcha');

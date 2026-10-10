@@ -66,6 +66,46 @@ function whiten(src: HTMLCanvasElement): HTMLCanvasElement {
   return c;
 }
 
+const hdCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+
+/**
+ * A double-size copy of a sprite (or any canvas), smoothed with Scale2x: staircase edges are rounded
+ * off, but no new colours are invented, so it stays pixel art. The game draws these on its 2x canvas;
+ * the original 1x canvases keep defining sizes. Cached per source canvas.
+ */
+export function hd(src: HTMLCanvasElement): HTMLCanvasElement {
+  let out = hdCache.get(src);
+  if (out) return out;
+  const w = src.width;
+  const h = src.height;
+  const px = new Uint32Array(src.getContext('2d')!.getImageData(0, 0, w, h).data.buffer);
+  out = document.createElement('canvas');
+  out.width = w * 2;
+  out.height = h * 2;
+  const g = out.getContext('2d')!;
+  const img = g.createImageData(w * 2, h * 2);
+  const o = new Uint32Array(img.data.buffer);
+  // Off the edge counts as transparent, so outlines get rounded corners too.
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : px[y * w + x]);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = px[y * w + x];
+      const a = at(x, y - 1);
+      const b = at(x + 1, y);
+      const c = at(x - 1, y);
+      const d = at(x, y + 1);
+      const i = y * 2 * w * 2 + x * 2;
+      o[i] = c === a && c !== d && a !== b ? a : p;
+      o[i + 1] = a === b && a !== c && b !== d ? b : p;
+      o[i + w * 2] = d === c && d !== b && c !== a ? c : p;
+      o[i + w * 2 + 1] = b === d && b !== a && d !== c ? d : p;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  hdCache.set(src, out);
+  return out;
+}
+
 /** Facing-right frames, mirrored frames and white "hit flash" versions of both. */
 export interface SpriteSet {
   r: HTMLCanvasElement[];
@@ -633,6 +673,69 @@ const SLIME_B = [
   '................',
 ];
 
+/** Enemy wolf: the pet's sprite, darker and with a red eye, trimmed to its height (16x11). */
+const WOLF_FOE = { g: 'G', G: 'd', y: 'R' };
+
+/** Imp (wave 4+): a little winged devil; the two frames are wings up and wings down. */
+const IMP_LOWER = [
+  '...krkrRRrkrk...',
+  '...kk.krrk.kk...',
+  '.kk...krrk......',
+  '.krk.kr..rk.....',
+  '..kk.kk..kk.....',
+];
+const IMP_UP = [
+  '.....b....b.....',
+  '.kk..kb..bk..kk.',
+  'kppk.krrrrk.kppk',
+  'kpppkrykrykkpppk',
+  '.kppkrrrrrkkppk.',
+  '..kpkrrwwrkkpk..',
+  '...kkkrrrrkkk...',
+  '....krrrrrrk....',
+  ...IMP_LOWER,
+];
+const IMP_DOWN = [
+  '.....b....b.....',
+  '.....kb..bk.....',
+  '.....krrrrk.....',
+  '....krykrykk....',
+  '.kkkkrrrrrkkkkk.',
+  'kpppkrrwwrkpppk.',
+  'kppk.krrrrk.kppk',
+  '.kk.krrrrrrk.kk.',
+  ...IMP_LOWER,
+];
+
+/** Thunder rat (wave 3+): small, yellow, with a lightning-bolt tail. */
+const RAT_BODY = [
+  '.kk.............',
+  'kyyk......k.k...',
+  '.kyyk....kokok..',
+  '..kyk..kkkyyyyk.',
+  '.kyk..kyyyyykyRk',
+  '.kyykkyoyoyyyyik',
+  '..kkyyoyoyyyyk..',
+  '....kyyyyyyyk...',
+];
+
+/** Crazy person (wave 2+): tinfoil hat, wild eyes, screaming. Watched too many ads. */
+const MADMAN_BODY = [
+  '.......kk.......',
+  '......kwgk......',
+  '.....kwgggk.....',
+  '...kkkkkkkkkk...',
+  '..mkffffffffkm..',
+  '..kfwkfffwkfk...',
+  '...kffffffffk...',
+  '...kfkRRRRkfk...',
+  '....kkfffkk.....',
+  '..kkwwwrwwwwkk..',
+  '.kfkwwwwwrwwkfk.',
+  '.kfkwwrwwwwwkfk.',
+  '..k.knnnnnnk.k..',
+];
+
 export const SPR = {
   player: spriteSet(PLAYER_BODY, [
     ['....kmk..kmk....', '....kmk..kmk....', '...kkkk..kkkk...'],
@@ -670,7 +773,14 @@ export const SPR = {
   eyeball: spriteSet([], [eyeball(0), eyeball(1)]),
   petDragon: spriteSet([], [recolor(DRAGON_WINGS_UP, PET_DRAGON_COLOURS), recolor(DRAGON_WINGS_DOWN, PET_DRAGON_COLOURS)]),
   spider: spriteSet([], [SPIDER_A, SPIDER_B]),
-  wolf: spriteSet([], [WOLF_A, WOLF_B]),
+  petWolf: spriteSet([], [WOLF_A, WOLF_B]),
+  wolf: spriteSet([], [recolor(WOLF_A.slice(5), WOLF_FOE), recolor(WOLF_B.slice(5), WOLF_FOE)]),
+  imp: spriteSet([], [IMP_UP, IMP_DOWN]),
+  rat: spriteSet(RAT_BODY, [['.....kk...kk....'], ['....kk.....kk...']]),
+  madman: spriteSet(MADMAN_BODY, [
+    ['....knk..knk....', '....knk..knk....', '...kffk..kffk...'],
+    ['....knk..knk....', '...knk....knk...', '...kfk....kfk...'],
+  ]),
   phoenix: spriteSet([], [PHOENIX_A, PHOENIX_B]),
   mage: spriteSet(MAGE_BODY, [
     ['....kuuuuuuk....', '...kuuuuuuuuk...', '...kkkkkkkkkk...'],
@@ -718,6 +828,10 @@ export const ICONS = {
   bear: SPR.bear.r[0],
   worm: SPR.worm.r[0],
   slime: SPR.slime.r[0],
+  wolf: SPR.wolf.r[0],
+  imp: SPR.imp.r[0],
+  rat: SPR.rat.r[0],
+  madman: SPR.madman.r[0],
   gem: build([
     '..kkkk..',
     '.kCwcck.',
