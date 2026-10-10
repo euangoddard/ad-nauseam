@@ -68,7 +68,7 @@ There are no tests or linter. `npm run build` passing is the bar for any change.
 `#overlay` is laid out at **640×360 (2× game resolution)** and scaled with
 `transform: scale(scale / OVERLAY_SCALE)`. All ad CSS sizes are in these overlay pixels. This is
 deliberate: laying it out at 1× would need sub-6px fonts, which browsers may clamp or render badly.
-The overlay has `pointer-events: none`; only `.ad-backdrop` and `.premium` re-enable them.
+The overlay has `pointer-events: none`; only `.nag-backdrop` and `.premium` re-enable them.
 
 ## Game loop and state
 
@@ -238,8 +238,13 @@ takes priority over the mouse; mouse aim only applies after the mouse has moved 
 
 ### Ad gotchas found in testing
 
-- `.ad-bar` must **not** have `position: relative`. Close buttons are absolutely positioned and need
-  the whole `.ad-win` as their containing block. When the bar was positioned, its
+- **Never use `ad-`/`ads-`/`advert`/`sponsor`-style class names or ids.** Ad blockers' generic
+  cosmetic filters hide them on the live site (`.ad-text` and `.ad-title` were `display: none`, so
+  ads showed up with no text). Ad blockers usually ignore localhost, so this never shows up in dev.
+  Ad DOM classes use the `nag-` prefix.
+
+- `.nag-bar` must **not** have `position: relative`. Close buttons are absolutely positioned and need
+  the whole `.nag-win` as their containing block. When the bar was positioned, its
   `overflow: hidden` clipped the runaway/tiny X whenever it moved out of the title bar.
 - The runaway X converts pointer coordinates to overlay space with
   `rect.width / el.offsetWidth` (the transform scale). Keep that if you change the overlay scaling.

@@ -329,7 +329,7 @@ export class AdManager {
   }
 
   private open(src: AdSource) {
-    const root = h('div', 'ad-backdrop');
+    const root = h('div', 'nag-backdrop');
     this.root = root;
     this.layer.appendChild(root);
     this.openedAt = performance.now();
@@ -377,13 +377,13 @@ export class AdManager {
   }
 
   private makeWin(c: Creative, small = false): Win {
-    const win = h('div', `ad-win ${pick(THEMES)}${small ? ' small' : ''}`);
-    const bar = h('div', 'ad-bar');
-    const title = h('span', 'ad-title', small ? 'AD' : pick(TITLES));
-    const x = h('button', 'ad-x', 'X');
+    const win = h('div', `nag-win ${pick(THEMES)}${small ? ' small' : ''}`);
+    const bar = h('div', 'nag-bar');
+    const title = h('span', 'nag-title', small ? 'AD' : pick(TITLES));
+    const x = h('button', 'nag-x', 'X');
     bar.append(title, x);
-    const body = h('div', 'ad-body');
-    const foot = h('div', 'ad-foot');
+    const body = h('div', 'nag-body');
+    const foot = h('div', 'nag-foot');
     win.append(bar, body, foot);
     win.style.setProperty('--dx', `${Math.round(rand(-60, 60))}px`);
     win.style.setProperty('--dy', `${Math.round(rand(-24, 24))}px`);
@@ -393,14 +393,14 @@ export class AdManager {
   }
 
   private fill(w: Win, c: Creative, small = false) {
-    const text = h('div', 'ad-text');
-    const cta = h('button', 'ad-cta', c.cta);
+    const text = h('div', 'nag-text');
+    const cta = h('button', 'nag-cta', c.cta);
     cta.onclick = () => this.bonus();
     text.append(h('h3', '', c.headline));
     if (!small) text.append(h('p', '', c.body));
     text.append(cta);
-    if (!small) text.append(h('small', 'ad-fine', c.fine));
-    w.body.replaceChildren(icon(c.icon, 'ad-art'), text);
+    if (!small) text.append(h('small', 'nag-fine', c.fine));
+    w.body.replaceChildren(icon(c.icon, 'nag-art'), text);
   }
 
   private shake(el: HTMLElement) {
@@ -413,7 +413,7 @@ export class AdManager {
 
   private countdown(w: Win, secs: number, onDone: () => void = () => this.finish()) {
     w.x.style.display = 'none';
-    const skip = h('button', 'ad-skip');
+    const skip = h('button', 'nag-skip');
     w.foot.replaceChildren(skip);
     let left = secs;
     const update = () => {
@@ -473,7 +473,7 @@ export class AdManager {
     w.x.style.bottom = corner < 2 ? 'auto' : '3px';
     w.x.style.left = corner % 2 ? '3px' : 'auto';
     w.x.style.right = corner % 2 ? 'auto' : '3px';
-    w.body.querySelector('.ad-cta')?.classList.add('huge');
+    w.body.querySelector('.nag-cta')?.classList.add('huge');
     w.x.onclick = () => this.finish();
   }
 
@@ -482,15 +482,15 @@ export class AdManager {
       sfx.buzz();
       w.x.style.display = 'none';
       w.title.textContent = 'ARE YOU SURE?';
-      const yes = h('button', 'ad-meh', 'yes, i hate saving money');
-      const no = h('button', 'ad-cta huge', 'NO! SHOW ME MORE!');
+      const yes = h('button', 'nag-meh', 'yes, i hate saving money');
+      const no = h('button', 'nag-cta huge', 'NO! SHOW ME MORE!');
       yes.onclick = () => this.finish();
       no.onclick = () => this.bonus();
-      const row = h('div', 'ad-choices');
+      const row = h('div', 'nag-choices');
       row.append(...(Math.random() < 0.5 ? [yes, no] : [no, yes]));
-      const text = h('div', 'ad-text');
+      const text = h('div', 'nag-text');
       text.append(h('h3', '', 'WAIT!!!'), h('p', '', 'If you close this ad you will miss this INCREDIBLE offer FOREVER.'), row);
-      w.body.replaceChildren(icon('coin', 'ad-art'), text);
+      w.body.replaceChildren(icon('coin', 'nag-art'), text);
       this.shake(w.win);
     };
   }
@@ -503,7 +503,7 @@ export class AdManager {
       const row = h('div', 'stars');
       row.append(...stars);
       const msg = h('p', '', 'Rate this ad before you go! Your feedback helps us show you MORE ads.');
-      const submit = h('button', 'ad-cta', 'SUBMIT 5 STARS');
+      const submit = h('button', 'nag-cta', 'SUBMIT 5 STARS');
       submit.style.visibility = 'hidden';
       submit.onclick = () => this.finish();
       let locked = false;
@@ -532,9 +532,9 @@ export class AdManager {
           );
         };
       });
-      const text = h('div', 'ad-text');
+      const text = h('div', 'nag-text');
       text.append(h('h3', '', 'HOW WAS THIS AD?'), msg, row, submit);
-      w.body.replaceChildren(icon('heart', 'ad-art'), text);
+      w.body.replaceChildren(icon('heart', 'nag-art'), text);
     };
   }
 
@@ -544,25 +544,25 @@ export class AdManager {
     const banner = h('div', 'cookie');
     root.appendChild(banner);
 
-    const accept = h('button', 'ad-cta huge', 'ACCEPT ALL');
+    const accept = h('button', 'nag-cta huge', 'ACCEPT ALL');
     accept.onclick = () => this.finish();
 
     const showIntro = () => {
-      const manage = h('button', 'ad-link', 'manage options');
+      const manage = h('button', 'nag-link', 'manage options');
       manage.onclick = showManage;
-      const text = h('div', 'ad-text');
+      const text = h('div', 'nag-text');
       text.append(
         h('h3', '', 'WE VALUE YOUR PRIVACY'),
         h('p', '', 'We and our 1,337 partners use cookies to measure your bone density, track your kills and sell your soul to the highest bidder.'),
       );
-      const row = h('div', 'ad-choices');
+      const row = h('div', 'nag-choices');
       row.append(accept, manage);
       text.append(row);
-      banner.replaceChildren(icon('cookie', 'ad-art'), text);
+      banner.replaceChildren(icon('cookie', 'nag-art'), text);
     };
 
     const showManage = () => {
-      const save = h('button', 'ad-meh', 'save & close');
+      const save = h('button', 'nag-meh', 'save & close');
       save.disabled = true;
       save.onclick = () => this.finish();
       const list = h('div', 'toggles');
@@ -591,11 +591,11 @@ export class AdManager {
         return t;
       });
       const check = () => (save.disabled = toggles.some((t) => t.classList.contains('on')));
-      const text = h('div', 'ad-text');
-      const row = h('div', 'ad-choices');
+      const text = h('div', 'nag-text');
+      const row = h('div', 'nag-choices');
       row.append(accept, save);
       text.append(h('h3', '', 'YOUR CHOICES (ALL ON)'), list, row);
-      banner.replaceChildren(icon('cookie', 'ad-art'), text);
+      banner.replaceChildren(icon('cookie', 'nag-art'), text);
     };
 
     showIntro();
@@ -607,9 +607,9 @@ export class AdManager {
     const fillEl = h('div', 'progress-fill');
     bar.append(fillEl);
     const label = h('p', '', 'LOADING AD... 0%');
-    const text = h('div', 'ad-text');
-    text.append(h('h3', '', 'PLEASE WAIT'), label, bar, h('small', 'ad-fine', 'Your ad is important to us.'));
-    w.body.replaceChildren(icon('coin', 'ad-art spin'), text);
+    const text = h('div', 'nag-text');
+    text.append(h('h3', '', 'PLEASE WAIT'), label, bar, h('small', 'nag-fine', 'Your ad is important to us.'));
+    w.body.replaceChildren(icon('coin', 'nag-art spin'), text);
     let pct = 0;
     this.every(60, () => {
       pct = Math.min(99, pct + Math.ceil(rand(2, 9)));
@@ -630,7 +630,7 @@ export class AdManager {
     const n = this.scaled(2, 8);
     const real = Math.floor(Math.random() * n);
     for (let i = 0; i < n; i++) {
-      const x = h('button', 'ad-x scattered', 'X');
+      const x = h('button', 'nag-x scattered', 'X');
       x.style.left = `${Math.round(rand(3, 92))}%`;
       x.style.top = `${Math.round(rand(10, 88))}%`;
       x.style.right = 'auto';
@@ -710,7 +710,7 @@ export class AdManager {
         label.textContent = `BONK! ${score}/${goal}`;
         if (score >= goal) {
           label.textContent = 'YOU WIN! Install the full game for 900 more levels!';
-          const install = h('button', 'ad-cta', 'INSTALL FULL GAME');
+          const install = h('button', 'nag-cta', 'INSTALL FULL GAME');
           install.onclick = () => this.bonus();
           text.append(install);
           w.x.style.display = '';
@@ -719,7 +719,7 @@ export class AdManager {
         }
       };
     });
-    const text = h('div', 'ad-text');
+    const text = h('div', 'nag-text');
     text.append(h('h3', '', 'WHACK-A-GOBLIN'), label, grid);
     w.body.replaceChildren(text);
     pop();
@@ -741,7 +741,7 @@ export class AdManager {
         if (tile.classList.contains('open')) return;
         tile.classList.add('open');
         if (i === at) {
-          const x = h('button', 'ad-x found', 'X');
+          const x = h('button', 'nag-x found', 'X');
           x.onclick = () => this.finish();
           tile.replaceChildren(x);
           msg.textContent = 'FOUND IT. FINE.';
@@ -770,7 +770,7 @@ export class AdManager {
     });
     const grid = h('div', 'tiles');
     grid.append(...tiles);
-    const text = h('div', 'ad-text');
+    const text = h('div', 'nag-text');
     text.append(h('h3', '', 'HIDE AND SEEK'), msg, grid);
     w.body.replaceChildren(text);
   }
@@ -791,7 +791,7 @@ export class AdManager {
     let fakeFails = Math.random() < Math.min(0.9, 0.4 + this.level * 0.06) ? 1 : 0;
     const msg = h('p', '', `Select all squares with ${label}.`);
     const grid = h('div', 'captcha');
-    const verify = h('button', 'ad-cta', 'VERIFY');
+    const verify = h('button', 'nag-cta', 'VERIFY');
     let answer = new Set<number>();
     let picked = new Set<number>();
     const build = () => {
@@ -823,7 +823,7 @@ export class AdManager {
       build();
     };
     build();
-    const text = h('div', 'ad-text');
+    const text = h('div', 'nag-text');
     text.append(h('h3', '', 'VERIFY TO CLOSE'), msg, grid, verify);
     w.body.replaceChildren(text);
   }
@@ -841,7 +841,7 @@ export class AdManager {
     };
     addClauses(10);
     let amendments = this.scaled(0, 3);
-    const agree = h('button', 'ad-cta', 'I AGREE');
+    const agree = h('button', 'nag-cta', 'I AGREE');
     agree.disabled = true;
     agree.onclick = () => this.finish();
     const msg = h('p', '', 'Scroll to the bottom to agree.');
@@ -857,7 +857,7 @@ export class AdManager {
       agree.disabled = false;
       msg.textContent = 'Thank you for reading every word.';
     };
-    const text = h('div', 'ad-text');
+    const text = h('div', 'nag-text');
     text.append(h('h3', '', 'PLEASE READ CAREFULLY'), msg, box, agree);
     w.body.replaceChildren(text);
   }
@@ -913,8 +913,8 @@ export class AdManager {
     knob.onpointerup = () => {
       if (dragging) release('You let go! Back to the start.');
     };
-    const text = h('div', 'ad-text');
+    const text = h('div', 'nag-text');
     text.append(h('h3', '', 'ALMOST THERE!'), msg, track);
-    w.body.replaceChildren(icon('coin', 'ad-art'), text);
+    w.body.replaceChildren(icon('coin', 'nag-art'), text);
   }
 }
