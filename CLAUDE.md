@@ -30,7 +30,7 @@ There are no tests or linter. `npm run build` passing is the bar for any change.
 | `public/og-image.png` | 2400×1260 social preview: a real in-game screenshot (headless Chrome, DPR 2, game at 3.5×) with the title added. |
 | `.env` / `.env.production` | `VITE_SITE_URL` (no trailing slash) for the absolute canonical/`og:` URLs in `index.html` (`%VITE_SITE_URL%`): localhost in dev, `https://ad-nauseam.euans.space` for `vite build`. Must stay absolute: Vite tries to bundle root-relative `og:image` paths and fails. |
 | `.github/workflows/deploy.yml` | On push to `main`: `npm ci`, `npm run build`, deploy `dist/` to GitHub Pages, served on the custom domain `ad-nauseam.euans.space` (set in the repo's Pages settings; no `CNAME` file needed for Actions deploys). |
-| `src/main.ts` | Bootstrap: wires `Input`, `AdManager`, `Game`; integer-scale resize; the "REMOVE ADS" button; the rAF loop; dev-only debug globals. |
+| `src/main.ts` | Bootstrap: wires `Input`, `AdManager`, `Game`; integer-scale resize; F toggles fullscreen (ignored in text inputs); the "REMOVE ADS" button; the rAF loop; dev-only debug globals. |
 | `src/game.ts` | Everything in the arena: state machine, player, enemies + AI, bullets, portals, pickups, particles, waves, HUD, title/game-over screens, procedural background. |
 | `src/ads.ts` | `AdManager`: ad queue, creatives, the 10 ad behaviours ("kinds"). Pure DOM. |
 | `src/sprites.ts` | Palette, pixel-grid sprite definitions, baked canvases (normal / mirrored / white hit-flash), ad icons. |

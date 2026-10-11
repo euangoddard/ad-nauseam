@@ -4672,9 +4672,9 @@ export class Game {
       this.text(b, cx, 114, '#ffcd75', 'center');
     });
 
-    this.text('WASD MOVE  MOUSE ATTACK  P PAUSE', W / 2, 128, '#94b0c2', 'center');
+    this.text('WASD MOVE  MOUSE ATTACK  SPACE DASH', W / 2, 128, '#94b0c2', 'center');
     this.text('1 WAND  2 SWORD  6 HERO  Q/WHEEL', W / 2, 138, '#94b0c2', 'center');
-    this.text('3/E/RMB NOVA  SPACE DASH  M MUTE', W / 2, 148, '#94b0c2', 'center');
+    this.text('3/E/RMB NOVA  P PAUSE  M MUTE  F FULL', W / 2, 148, '#94b0c2', 'center');
     if (Math.floor(this.time * 2) % 2 === 0) this.text('CLICK OR ENTER TO START', W / 2, 161, '#f4f4f4', 'center');
     this.text(`S SHOP & HEROES   HERO: ${this.hero.name}`, W / 2, 171, '#566c86', 'center');
     if (this.best) this.text(`BEST ${this.best}`, W - 4, 2, '#566c86', 'right');

@@ -44,6 +44,7 @@ there if the domain changes.
 | Space / Shift | Dash (brief invulnerability) |
 | P / Esc | Pause |
 | M | Mute |
+| F | Toggle fullscreen |
 
 ## Attacks
 

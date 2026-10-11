@@ -30,6 +30,18 @@ const unlock = () => sfx.unlock();
 window.addEventListener('pointerdown', unlock);
 window.addEventListener('keydown', unlock);
 
+// F toggles fullscreen on the whole page; resize() then picks the new integer scale.
+function toggleFullscreen() {
+  if (!document.fullscreenEnabled) return;
+  if (document.fullscreenElement) void document.exitFullscreen();
+  else void document.documentElement.requestFullscreen().catch(() => {});
+}
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyF' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  toggleFullscreen();
+});
+
 function resize() {
   const fit = Math.min(window.innerWidth / W, window.innerHeight / H);
   const scale = fit >= 1 ? Math.floor(fit) : fit;
