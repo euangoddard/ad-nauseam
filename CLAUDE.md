@@ -58,10 +58,19 @@ There are no tests or linter. `npm run build` passing is the bar for any change.
 - Entities are drawn feet-anchored: `drawSet()` draws a sprite at `(x-w/2, y-h+1)` (so a 16×16 sprite
   is at `(x-8, y-15)`), so `y` is the feet. Flyers are drawn raised by `lift()`. Enemy hit circles are
   centred on `(x, y-STATS.hy)`; the player's is `(x, y-6)`. Draw order is y-sorted.
-- Screen layout: y 0–11 HUD strip (over the brick wall), y 0–32 back wall with 4 animated torches,
-  floor below. Walkable bounds are `AR` (`x 12–308`, `y 40–172`, measured at the feet).
-- The background is pre-rendered once by `makeBackground()` with a seeded RNG (`mulberry32(1337)`),
-  so it looks the same every load.
+- **The world is endless.** Entities live in world coordinates; `cam` is the view's top-left and
+  `updateCamera()` (after `updatePlayer()`, snapped in `start()`) eases it to keep the player centred.
+  `render()` translates by `-half(cam)` for the world layers; HUD, banner, weapon bar and
+  `drawOffscreen()` (edge markers for enemies off screen) draw in screen space afterwards. Mouse aim adds
+  `cam` to `input.mouse`. There are no walls and the player isn't clamped.
+- `AR` and `SCR` are **mutable, view-relative** bounds updated by `updateCamera()`: `AR` is the walkable
+  part of the view (feet; spawns, portals, teleports, pets, slam points and bosses are clamped to it,
+  which is also the bear's "wall"), `SCR` is the view ±40px (bullets expire, bombs explode, beams/zaps
+  end there). Ordinary enemies aren't clamped; past `LEASH` (300px) from the player they're moved
+  back to just off screen. Boss spawn points and the eyeball/bat clamps are offset by `cam`.
+- Screen layout: y 0–11 HUD strip over the floor. The floor is `makeBackground()`'s `BG` (384px)
+  tileable texture repeated by `drawFloor()`, plus braziers (`drawBrazier()`, the old torches) placed per
+  `BRAZIER_CELL` by a hashed `mulberry32`, so the world looks the same every load.
 
 ### The DOM overlay (important)
 
@@ -87,7 +96,7 @@ The overlay has `pointer-events: none`; only `.nag-backdrop` and `.premium` re-e
   in `updateEnemies()`.
 - **Maps** (`Biome`, `BIOMES`, `LOOKS`, `TINTS`, `BIOME_INTRO`): a boss wave clear sets `nextBiome`;
   `startWave()` applies it via `setBiome()`. Backgrounds are built once per map by
-  `makeBackground(biome)` (cached in `bgs`); torches use `LOOKS[biome].flame`. `enemySprite(type)` returns
+  `makeBackground(biome)` (cached in `bgs`); braziers use `LOOKS[biome].flame` and its wall/brick colours. `enemySprite(type)` returns
   `recolorSet()`-repainted sprites for the map (cached in `tinted`); worms/slimes keep their colours.
   Draw enemies through `enemySprite()`, not `SPR[type]`. `start()` resets to the dungeon.
 - **Sandworm** (`aiWorm()`, `drawWorm()`): `burrow` (untargetable, chases) → `windup` (locks
@@ -121,10 +130,13 @@ The overlay has `pointer-events: none`; only `.nag-backdrop` and `.premium` re-e
 ## Waves
 
 `startWave(n)`: `2+ceil(0.8n)` skeletons, `ceil(0.6n)` zombies, sorcerers and goblins from wave 2,
-trolls and thunder rats from 3, baby dragons and imps (swarms of 3) from 4, and reapers and wolves (packs) from 5, and from wave 2 a 35–75% chance of a glitch (plus a 30% chance of a second from wave 7; still the rarest enemy), one or two of each at first (see `counts`), shuffled and spawned one by one through red portals every 0.5–1.1s ÷ difficulty (0.9s telegraph, at least 80px from the
+trolls, thunder rats and giant spiders from 3, baby dragons, imps (swarms of 3) and living armour from 4, and reapers and wolves (packs) from 5, and from wave 2 a 35–75% chance of a glitch (plus a 30% chance of a second from wave 7; still the rarest enemy), one or two of each at first (see `counts`), shuffled and spawned one by one through red portals every 0.5–1.1s ÷ difficulty (0.9s telegraph, at least 80px from the
 player). Wolves and imps are kept together in the shuffled queue, and each one after the first comes
 through a portal next to the previous one 0.2s later, so packs arrive as a group. A wave clears when the spawn queue, portals, enemies and pending ad timers are all empty;
-then there's a 3s break and the player heals up to 15 HP. `difficulty = 1 + (wave-1)*0.04` scales
+then there's a 3s break and the player heals up to 15 HP. Mimics join from wave 7 and ghosts from 8.
+**Wave size is capped** (`WAVE_CAP`): `counts` is trimmed (one at a time from the most numerous type, so
+every type that joined still appears) to `base + n` up to `max` (22), and `updateWaves()` holds the next
+portal while enemies + portals ≥ `alive` (12; bosses ignore it). `difficulty = 1 + (wave-1)*0.04` scales
 enemy speed and spawn rate; enemy HP scales by `+6%/wave`; the score multiplier is `+10%/wave`.
 
 ## Enemies (`STATS` in `game.ts`)
@@ -142,6 +154,10 @@ enemy speed and spawn rate; enemy HP scales by `+6%/wave`; the score multiplier 
 | rat | 2 | 72 | 13 | Thunder rat. `aiRat()`: scurries in bursts, `windup` tracks then locks `RAT.lock` before firing; `ratZap()` damages anything near the segment at once and pushes a `Zap` (drawn by `drawZap()`, sight by `drawZapSight()`). Keeps its own colours. |
 | imp | 1 | 66 | 7 | `aiImp()`: flies (`lift()`), wobbles at 40–80px, `cast`s a `small` fireball. Swarms of 3. |
 | wolf | 3 | 60 | 13 | `aiWolf()`: circles at 35–55px, `windup` crouch, `charge` = pounce (`WOLF`, hop via `lift()`), `recover` backs off. Packs. The enemy sprite is the pet's, recoloured; the pet uses `SPR.petWolf`. |
+| spider | 5 | 58 | 12 | Giant spider. `aiSpider()`: skitters in bursts at 50–90px; `cast` spits a `web` bullet that sets `player.webT` (movement ×`SPIDER.webSlow`). When you're webbed or within 30px: `windup` crouch → `charge` (locked-direction rush, bites on contact) → `recover` backs off. The pet spider's sprite is `SPR.petSpider`. |
+| mimic | 8 | 64 | 20 | Spawns in `lurk` (a shut chest, frame 0, can't be knocked back). `aiMimic()` wakes it when you're within `MIMIC.wake`, it's hit, or `MIMIC.nap` runs out; then generic melee AI, hopping via `lift()`, mouth open on windup. 10–20 coins. Keeps its own colours. |
+| ghost | 4 | 30 | 15 | `aiGhost()`: wobbles towards you; when `summonCd` runs out (and soon after each attack) it goes `phase` (untargetable, alpha ~0.06) and glides at ×`GHOST.glide` to `tx`/`ty` just past the player, then reappears and winds up a BOO (generic melee windup/recover). Drawn at 0.75 alpha. Keeps its own colours. |
+| armor | 12 | 24 | 22 | Living armour. Generic melee AI, drawn with `drawGreatsword()`. `armorDmg()` halves bullet damage (not spear or bomb). Below half HP `hitEnemy()` sets `e.combo = 1`: helmet off, `SPR.armorHeadless`, speed ×`ARMOR.headless`. Keeps its own colours (not tinted). |
 
 - **Bosses** (`isBoss()`, `BOSS_NAMES`): `isBossWave(n)` (every 6th wave) makes `startWave()` pick one at
   random (`eyeball`, two `bat`s, or `bear`) and queue just that; they spawn on the far side from the
@@ -185,6 +201,13 @@ Weapons (`Weapon` / `WEAPONS` in `game.ts`), all sharing `shootCd`:
   slows down and `explode()`s on fuse end, wall or enemy contact (radius 24, 5 damage).
 - Switching: `WEAPON_KEYS` (1–5), Q (wand ↔ sword), mouse wheel (`input.wheel`, cycles owned weapons,
   skipping a recharging nova). The weapon bar shows only owned weapons.
+- **Hero weapons** (`HeroWeapon`, `HERO_WEAPONS`, key 6): all four are in `WEAPON_KEYS` on Digit6, and
+  `owned()` only allows the current hero's. Boomerang (`throwBoomerang()`, `BOOMERANG`): one in flight,
+  turns back (`back`, `hits` reset) after `out` or at a wall, caught near the player. Skeletons
+  (`raiseSkeleton()`, `SUMMON`): pushes a `Minion` (`minions`, `updateMinions()`, `drawMinion()`),
+  invulnerable like pets, `rise` animation, crumbles after `life`; the oldest goes at `max`. Warhammer
+  (`slamHammer()`, `HAMMER`): instant squashed-ellipse area hit, pushes a `Shock` with `r`. Spear
+  (`SPEAR`): a `spear` bullet with `pierce: 99` that ignores armour.
 - **Pets** (`PET_KINDS`, `Pet`, `updatePets()`, `drawPet()`): can't be hurt. Wolf: runs at the
   nearest enemy and pounces (`breathT` doubles as the pounce timer, `vx`/`vy`). Phoenix: orbits the player
   firing `homing` fireballs, and is the one-time revive (`spent`). The dragon follows behind the player
@@ -257,7 +280,15 @@ takes priority over the mouse; mouse aim only applies after the mouse has moved 
 - **New ad creative**: append to `CREATIVES` with `tags` (an enemy source, a special source, or `ANY`).
 - **Ad kinds added later**: `minigame` (whack-a-goblin), `slider` (pointer-captured knob, speed
   limit in overlay px/ms), `hide` (X under one of six tiles, may move), `captcha` (icon grid, may fake a
-  failure once), `terms` (scroll box that appends clauses up to `scaled(0, 3)` times). Styles are in
+  failure once), `terms` (scroll box that appends clauses up to `scaled(0, 3)` times), `watch` (progress
+  only advances while the pointer is over the window, rewinds otherwise), `slots` (rigged: `scaled(0, 3)`
+  losing spins first), `unsub` (type UNSUBSCRIBE in a focused `<input>`; may "autocorrect" once; the word
+  must avoid M (mute hotkey) and spaces (blocked by `Input`)), `hydra` (like `storm`, opened before
+  `makeWin`; each close spawns up to two more until `scaled(1, 6)` heads are used up), `quiz` (any
+  answers, then a 2s countdown), `wizard` (pre-ticked `EXTRAS`; leaving any ticked ends in `bonus()`),
+  `sticky` (calls `finish()` straight away so the game keeps running, then a non-blocking window
+  bounces round the overlay; it lives in `stickyEl`/`stickyTimers`, outside `root`/`timers`, and
+  `clearSticky()` removes it, including from `reset()`). Styles are in
   `style.css` next to the other ad styles.
 - **New ad behaviour**: add to `Kind` and `WEIGHTS`, write a method on `AdManager`, and dispatch it in
   `open()`. Every path must end in `finish()` (or `bonus()`), or the game stays frozen.

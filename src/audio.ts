@@ -117,6 +117,8 @@ class Sfx {
   growl() { this.tone(90, 0.35, 'sawtooth', 0.07, 70); this.noise(0.3, 0.06, 500); }
   cackle() { [1100, 1500, 1050, 1600].forEach((f, i) => this.tone(f, 0.05, 'triangle', 0.05, undefined, i * 0.07)); }
   crackle() { this.noise(0.5, 0.06, 7000); this.tone(2000, 0.5, 'square', 0.02, 3000); }
+  boo() { this.tone(600, 0.35, 'triangle', 0.07, 180); this.tone(640, 0.35, 'sine', 0.04, 200); }
+  chomp() { this.noise(0.06, 0.14, 2000); this.tone(160, 0.08, 'square', 0.07, 80); }
   zap() { this.noise(0.25, 0.22, 5000); this.tone(1800, 0.2, 'sawtooth', 0.07, 150); }
   breath() { this.noise(0.8, 0.14, 1800); this.tone(140, 0.8, 'sawtooth', 0.04, 90); }
 

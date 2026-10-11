@@ -2,7 +2,7 @@ import { SPR, HEART, ICONS, hd, recolorSet, type SpriteSet } from './sprites';
 import { sfx } from './audio';
 import type { Input } from './input';
 import { PERKS, type AdManager, type PerkId } from './ads';
-import { UPGRADES, HEROES, loadSave, storeSave, nextCost, heroOwned } from './shop';
+import { UPGRADES, HEROES, loadSave, storeSave, nextCost, heroOwned, type HeroId } from './shop';
 
 export const W = 320;
 export const H = 180;
@@ -12,11 +12,22 @@ export const H = 180;
  */
 export const RES = 2;
 /** Walkable area, measured at the entities' feet. */
-const AR = { x0: 12, y0: 40, x1: 308, y1: 172 };
-const TORCHES = [40, 120, 200, 280];
+/**
+ * The world is endless; the camera follows the player. `AR` is the walkable part of the current view
+ * (spawns, teleports and bosses stay inside it) and `SCR` is the view plus a margin (bullets, beams
+ * and bolts end there). Both are moved by `Game.updateCamera()`.
+ */
+const AR = { x0: 12, y0: 30, x1: W - 12, y1: H - 8 };
+const SCR = { x0: -40, y0: -40, x1: W + 40, y1: H + 40 };
+/** Size of the repeating floor texture. */
+const BG = 384;
+/** Braziers: one may stand in each cell of this size. */
+const BRAZIER_CELL = 112;
+/** Non-boss enemies further than this from the player are moved back to just off screen. */
+const LEASH = 300;
 
-export type EnemyType = 'skeleton' | 'zombie' | 'sorcerer' | 'goblin' | 'troll' | 'reaper' | 'glitch' | 'dragon' | 'eyeball' | 'bat' | 'bear' | 'worm' | 'slime' | 'wolf' | 'imp' | 'rat';
-type EState = 'chase' | 'windup' | 'recover' | 'cast' | 'summon' | 'flee' | 'phase' | 'breathe' | 'aim' | 'laser' | 'tears' | 'swoop' | 'screech' | 'charge' | 'maul' | 'stun' | 'burrow' | 'surface' | 'warp';
+export type EnemyType = 'skeleton' | 'zombie' | 'sorcerer' | 'goblin' | 'troll' | 'reaper' | 'glitch' | 'dragon' | 'eyeball' | 'bat' | 'bear' | 'worm' | 'slime' | 'wolf' | 'imp' | 'rat' | 'armor' | 'spider' | 'ghost' | 'mimic';
+type EState = 'chase' | 'windup' | 'recover' | 'cast' | 'summon' | 'flee' | 'phase' | 'breathe' | 'aim' | 'laser' | 'tears' | 'swoop' | 'screech' | 'charge' | 'maul' | 'stun' | 'burrow' | 'surface' | 'warp' | 'lurk';
 
 interface Stats {
   hp: number;
@@ -63,7 +74,24 @@ const STATS: Record<EnemyType, Stats> = {
   wolf: { hp: 3, speed: 60, r: 5, dmg: 13, range: 0, windup: 0.45, recover: 0.7, score: 180, kb: 80, hy: 4, drop: 0.1 },
   imp: { hp: 1, speed: 66, r: 4, dmg: 7, range: 0, windup: 0.35, recover: 0, score: 140, kb: 110, hy: 13, drop: 0.05 },
   rat: { hp: 2, speed: 72, r: 4, dmg: 13, range: 0, windup: 0.8, recover: 0.6, score: 200, kb: 100, hy: 3, drop: 0.1 },
+  // Living armour: slow, heavy sword swings, and bolts glance off it (half damage) so hit it up
+  // close. Knock its helmet off (half HP) and it speeds up. Giant spiders spit webs that slow you
+  // down, then rush in to bite while you're stuck.
+  armor: { hp: 12, speed: 24, r: 6, dmg: 22, range: 15, windup: 0.55, recover: 0.8, score: 400, kb: 20, hy: 8, drop: 0.25 },
+  spider: { hp: 5, speed: 58, r: 6, dmg: 12, range: 0, windup: 0.5, recover: 0.5, score: 260, kb: 70, hy: 4, drop: 0.12 },
+  // Ghosts drift in, vanish, and reappear right next to you. Mimics sit still pretending to be a
+  // treasure chest until you get close (or hit one), then chase you down and chomp.
+  ghost: { hp: 4, speed: 30, r: 5, dmg: 15, range: 12, windup: 0.4, recover: 0.6, score: 320, kb: 60, hy: 12, drop: 0.12 },
+  mimic: { hp: 8, speed: 64, r: 6, dmg: 20, range: 12, windup: 0.3, recover: 0.6, score: 380, kb: 40, hy: 5, drop: 0.3 },
 };
+/** Ghost: how long it stays invisible, time between vanishes, and how fast it glides while gone. */
+const GHOST = { vanish: 1.3, every: [2.5, 4], glide: 2.4 };
+/** Mimic: how close you can get before it wakes up, and the most it'll wait before giving up the act. */
+const MIMIC = { wake: 36, nap: 9 };
+/** Living armour: projectile damage taken, and the speed boost once its helmet is off. */
+const ARMOR = { glance: 0.5, headless: 1.6 };
+/** Giant spider: web glob speed/damage, how long a web slows you (and by how much), and its rush. */
+const SPIDER = { webSpeed: 120, webDmg: 4, webT: 2.5, webSlow: 0.45, crouch: 0.3, rush: 0.7, rushSpeed: 2.6 };
 /** Wolf pounce: how long the leap lasts and how fast it goes. */
 const WOLF = { pounce: 0.32, pounceSpeed: 210 };
 /** Thunder rat: aim locks this long before the bolt fires; the bolt's length; how long it's drawn. */
@@ -94,6 +122,11 @@ const COINS: Record<EnemyType, [number, number]> = {
   wolf: [2, 5],
   imp: [1, 3],
   rat: [2, 5],
+  armor: [5, 9],
+  spider: [3, 6],
+  ghost: [3, 7],
+  // It is a treasure chest, after all.
+  mimic: [10, 20],
 };
 /** Guaranteed gem drops (bosses); everything else drops one 3% of the time. */
 const GEMS: Partial<Record<EnemyType, number>> = { eyeball: 10, bear: 10, bat: 5 };
@@ -113,19 +146,53 @@ const SHOP_ROW = 11;
 const SHOP_PLAY = { x: W / 2 - 50, y: 148, w: 100, h: 13 };
 const SHOP_TABS = ['UPGRADES', 'HEROES'];
 const HERO_SPRITES = { adventurer: SPR.player, mage: SPR.mage, knight: SPR.knight, achilles: SPR.achilles };
+/** Enemies per wave: base + wave number, up to max. At most `alive` enemies + portals at once. */
+const WAVE_CAP = { base: 14, max: 22, alive: 12 };
 /** Every sixth wave (so straight after clearing wave 5) is a boss wave. */
 const isBossWave = (n: number) => n % 6 === 0;
 
 /** Wand and sword are swapped freely; the nova is a special that can be armed when off cooldown. */
-type Weapon = 'wand' | 'sword' | 'nova' | 'scatter' | 'bomb';
-/** Scatter and bomb are bought in the shop. */
+type Weapon = 'wand' | 'sword' | 'nova' | 'scatter' | 'bomb' | HeroWeapon;
+/** Every hero has a signature weapon of their own, on key 6. */
+type HeroWeapon = 'boomerang' | 'summon' | 'hammer' | 'spear';
+const HERO_WEAPONS: Record<HeroId, HeroWeapon> = { adventurer: 'boomerang', mage: 'summon', knight: 'hammer', achilles: 'spear' };
+const WEAPON_NAMES: Record<Weapon, string> = {
+  wand: 'WAND',
+  sword: 'SWORD',
+  nova: 'NOVA',
+  scatter: 'SCATTER',
+  bomb: 'BOMB',
+  boomerang: 'BOOMERANG',
+  summon: 'SKELETONS',
+  hammer: 'WARHAMMER',
+  spear: 'SPEAR',
+};
+const HERO_WEAPON_HINT: Record<HeroWeapon, string> = {
+  boomerang: 'press 6 for your boomerang',
+  summon: 'press 6 to raise skeletons',
+  hammer: 'press 6 for your warhammer',
+  spear: 'press 6 for your spear',
+};
+/** Scatter and bomb are bought in the shop. Only your hero's own weapon is owned out of the four on 6. */
 const WEAPON_KEYS: [string, Weapon][] = [
   ['Digit1', 'wand'],
   ['Digit2', 'sword'],
   ['Digit3', 'nova'],
   ['Digit4', 'scatter'],
   ['Digit5', 'bomb'],
+  ['Digit6', 'boomerang'],
+  ['Digit6', 'summon'],
+  ['Digit6', 'hammer'],
+  ['Digit6', 'spear'],
 ];
+/** Adventurer: one boomerang at a time; it hits everything on the way out and again on the way back. */
+const BOOMERANG = { cd: 0.2, speed: 210, out: 0.4, dmg: 2 };
+/** Mage: each cast raises a skeleton that fights for you (the oldest crumbles if you're at the cap). */
+const SUMMON = { cd: 1, max: 4, life: 14, rise: 0.4, speed: 72, dmg: 2, hitCd: 0.7, reach: 8 };
+/** Knight: a ground slam just in front of you; `r` is the area (squashed like the troll's). */
+const HAMMER = { cd: 0.7, swing: 0.15, reach: 16, r: 22, dmg: 6 };
+/** Achilles: a thrown spear that goes through everything, armour included. */
+const SPEAR = { cd: 0.55, speed: 300, dmg: 4 };
 const SCATTER = { cd: 0.28, spread: 0.18 };
 const BOMB = { cd: 0.75, speed: 170, fuse: 0.55, radius: 24, dmg: 5 };
 const SWORD = { cd: 0.32, swing: 0.12, reach: 22, arc: 1.1, dmg: 3 };
@@ -150,6 +217,23 @@ interface Pet {
   vy: number;
   /** The phoenix has already used its once-per-run revive. */
   spent: boolean;
+}
+
+/** A skeleton raised by the mage's staff. Like pets, it can't be hurt; it crumbles after `t` runs out. */
+interface Minion {
+  x: number;
+  y: number;
+  face: number;
+  anim: number;
+  cd: number;
+  /** Time left before it crumbles. */
+  t: number;
+  /** Time left climbing out of the ground (it can't act until it's up). */
+  rise: number;
+  /** Time left in its sword swing, for drawing. */
+  swing: number;
+  aimX: number;
+  aimY: number;
 }
 
 interface Nova {
@@ -221,6 +305,13 @@ interface Bullet {
   homing?: boolean;
   /** Imp fireball: a small one. */
   small?: boolean;
+  /** Giant spider web: slows you down if it hits. */
+  web?: boolean;
+  /** Adventurer boomerang: flies out, then turns and comes back to be caught (`back`). */
+  boomerang?: boolean;
+  back?: boolean;
+  /** Achilles' spear: pierces everything and isn't slowed down by armour. */
+  spear?: boolean;
   /** Mage bolts pass through this many more enemies (never hitting the same one twice). */
   pierce?: number;
   hits?: Set<Enemy>;
@@ -251,6 +342,8 @@ interface Shock {
   x: number;
   y: number;
   t: number;
+  /** Radius (defaults to the troll's `SLAM_R`). */
+  r?: number;
 }
 
 /** Thunder rat lightning bolt (the damage is dealt the moment it fires; this is the drawing). */
@@ -391,16 +484,16 @@ const BIOME_INTRO: Record<Biome, [string, string]> = {
 
 function makeBackground(biome: Biome): HTMLCanvasElement {
   const c = document.createElement('canvas');
-  c.width = W;
-  c.height = H;
+  c.width = BG;
+  c.height = BG;
   const g = c.getContext('2d')!;
   const rng = mulberry32(1337 + BIOMES.indexOf(biome));
   const r = <T>(arr: T[]) => arr[Math.floor(rng() * arr.length)];
   const L = LOOKS[biome];
 
-  // Floor tiles.
-  for (let y = 32; y < H; y += 16) {
-    for (let x = 0; x < W; x += 16) {
+  // Floor tiles. The texture repeats across the endless floor, so it's a whole number of tiles.
+  for (let y = 0; y < BG; y += 16) {
+    for (let x = 0; x < BG; x += 16) {
       g.fillStyle = r(L.floor);
       g.fillRect(x, y, 16, 16);
       g.fillStyle = L.grout;
@@ -466,56 +559,6 @@ function makeBackground(biome: Biome): HTMLCanvasElement {
     }
   }
 
-  // Back wall.
-  g.fillStyle = L.wall;
-  g.fillRect(0, 0, W, 32);
-  for (let row = 0; row < 4; row++) {
-    const y = row * 8;
-    for (let x = row % 2 ? -8 : 0; x < W; x += 16) {
-      g.fillStyle = r(L.bricks);
-      g.fillRect(x + 1, y + 1, 14, 6);
-      g.fillStyle = L.brickHi;
-      g.fillRect(x + 1, y + 1, 14, 1);
-      g.fillStyle = L.brickLo;
-      g.fillRect(x + 1, y + 6, 14, 1);
-    }
-  }
-  g.fillStyle = '#0e0e1a';
-  g.fillRect(0, 32, W, 2);
-  g.fillStyle = 'rgba(0,0,0,0.3)';
-  g.fillRect(0, 34, W, 4);
-  if (biome === 'slime') {
-    // Slime oozing down the wall.
-    for (let k = 0; k < 26; k++) {
-      const x = Math.floor(rng() * W);
-      const len = 3 + Math.floor(rng() * 9);
-      const top = Math.floor(rng() * 20);
-      g.fillStyle = '#38b764';
-      g.fillRect(x, top, 2, len);
-      g.fillStyle = '#a7f070';
-      g.fillRect(x, top + len, 2, 2);
-    }
-  }
-
-  // Side and bottom walls.
-  g.fillStyle = L.wall;
-  g.fillRect(0, 32, 6, H);
-  g.fillRect(W - 6, 32, 6, H);
-  g.fillRect(0, H - 4, W, 4);
-  g.fillStyle = L.brickHi;
-  g.fillRect(5, 32, 1, H - 36);
-  g.fillRect(W - 6, 32, 1, H - 36);
-  g.fillRect(6, H - 4, W - 12, 1);
-
-  // Torch brackets.
-  for (const tx of TORCHES) {
-    g.fillStyle = '#1a1c2c';
-    g.fillRect(tx - 2, 18, 5, 3);
-    g.fillStyle = '#8b5a3c';
-    g.fillRect(tx - 1, 16, 3, 6);
-    g.fillStyle = '#566c86';
-    g.fillRect(tx - 2, 15, 5, 2);
-  }
   return c;
 }
 
@@ -566,6 +609,8 @@ function newPlayer(maxHp = 120) {
     poisonAcc: 0,
     /** Glitched by a Glitch packet: can't move or dash (can still aim and attack). */
     glitchT: 0,
+    /** Hit by a giant spider's web: moves slower. */
+    webT: 0,
   };
 }
 
@@ -576,6 +621,7 @@ export class Game {
   private time = 0;
   private player = newPlayer();
   private pets: Pet[] = [];
+  private minions: Minion[] = [];
   /** Coins and shop purchases, kept between runs. */
   private save = loadSave();
   /** Coins picked up this run; banked when you die. Goblins steal from these. */
@@ -602,6 +648,8 @@ export class Game {
   /** Set when a boss dies; the map changes when the next wave starts. */
   private nextBiome: Biome | null = null;
   private bgs = new Map<Biome, HTMLCanvasElement>();
+  /** Top-left of the view in world coordinates. */
+  private cam = { x: 0, y: 0 };
   private tinted = new Map<string, SpriteSet>();
   private texts: FloatText[] = [];
   private decals: Decal[] = [];
@@ -672,7 +720,14 @@ export class Game {
   }
 
   private owned(w: Weapon) {
-    return w === 'scatter' ? this.save.scatter > 0 : w === 'bomb' ? this.save.bomb > 0 : true;
+    if (w === 'scatter') return this.save.scatter > 0;
+    if (w === 'bomb') return this.save.bomb > 0;
+    if (w === 'boomerang' || w === 'summon' || w === 'hammer' || w === 'spear') return w === this.heroWeapon;
+    return true;
+  }
+
+  private get heroWeapon() {
+    return HERO_WEAPONS[this.hero.id];
   }
 
   private get weapons() {
@@ -705,7 +760,9 @@ export class Game {
 
   start() {
     this.player = newPlayer(this.hero.hp + this.save.hp * 15);
+    this.updateCamera(0, true);
     this.pets = PET_KINDS.filter((k) => this.save[k] > 0).map((k) => this.newPet(k));
+    this.minions = [];
     this.coins = 0;
     this.gems = 0;
     this.enemies = [];
@@ -734,7 +791,7 @@ export class Game {
     this.ads.reset();
     this.state = 'playing';
     this.waveBreak = 1.2;
-    this.banner = { text: 'GET READY', sub: 'every kill is sponsored', t: 1.2 };
+    this.banner = { text: 'GET READY', sub: HERO_WEAPON_HINT[this.heroWeapon], t: 1.2 };
   }
 
   private setBiome(b: Biome) {
@@ -757,7 +814,7 @@ export class Game {
   /** Enemy sprites repainted for the current map (map natives keep their own colours). */
   private enemySprite(type: EnemyType): SpriteSet {
     const tint = TINTS[this.biome];
-    if (!tint || type === 'worm' || type === 'slime' || type === 'glitch' || type === 'rat') return SPR[type];
+    if (!tint || type === 'worm' || type === 'slime' || type === 'glitch' || type === 'rat' || type === 'armor' || type === 'ghost' || type === 'mimic') return SPR[type];
     const key = `${this.biome}:${type}`;
     let set = this.tinted.get(key);
     if (!set) {
@@ -802,11 +859,24 @@ export class Game {
       // Imps come in swarms of three, wolves in packs.
       ['imp', n >= 4 ? 3 * Math.max(1, Math.floor((n - 1) / 4)) : 0],
       ['wolf', n >= 5 ? 2 + Math.floor((n - 5) / 3) : 0],
+      ['spider', n >= 3 ? 1 + Math.floor((n - 3) / 3) : 0],
+      ['armor', n >= 4 ? Math.max(1, Math.floor((n - 2) / 3)) : 0],
+      ['mimic', n >= 7 ? 1 + Math.floor((n - 7) / 4) : 0],
+      ['ghost', n >= 8 ? 2 + Math.floor((n - 8) / 3) : 0],
       ['worm', this.biome === 'desert' ? 2 + Math.floor(n / 3) : 0],
       ['slime', this.biome === 'slime' ? 3 + Math.floor(n / 3) : 0],
       // Still the rarest enemy: often one a wave from wave 2, sometimes two from wave 7.
       ['glitch', (n >= 2 && Math.random() < Math.min(0.75, 0.3 + n * 0.05) ? 1 : 0) + (n >= 7 && Math.random() < 0.3 ? 1 : 0)],
     ];
+    // Later waves would otherwise be a wall of 50+ enemies. Cap the total (they're tougher by then
+    // anyway) by trimming whichever type has the most, so every type that joined still shows up.
+    const cap = Math.min(WAVE_CAP.max, WAVE_CAP.base + n);
+    let total = counts.reduce((s, [, c]) => s + c, 0);
+    while (total > cap) {
+      const most = counts.reduce((a, b) => (b[1] > a[1] ? b : a));
+      most[1]--;
+      total--;
+    }
     let list: EnemyType[] = [];
     for (const [type, count] of counts) for (let i = 0; i < count; i++) list.push(type);
     for (let i = list.length - 1; i > 0; i--) {
@@ -823,9 +893,10 @@ export class Game {
     this.spawnT = 0.6;
     const introSub: Record<number, string> = {
       2: 'sorcerers + goblins incoming',
-      3: 'trolls + thunder rats incoming',
-      4: 'baby dragons + imps incoming',
+      3: 'trolls, rats + spiders incoming',
+      4: 'dragons, imps + living armor',
       5: 'reapers + wolf packs incoming',
+      8: 'the room is haunted',
     };
     const glitchSub = list.includes('glitch') ? 's0meth1ng is gl1tch1ng' : '';
     this.banner = { text: intro ? BIOME_INTRO[this.biome][0] : `WAVE ${n}`, sub: intro || (introSub[n] ?? glitchSub), t: intro ? 3 : 2 };
@@ -885,7 +956,9 @@ export class Game {
     }
 
     this.updatePlayer(dt);
+    this.updateCamera(dt);
     this.updatePets(dt);
+    this.updateMinions(dt);
     this.updateNovas(dt);
     this.updateWaves(dt);
     this.updateEnemies(dt);
@@ -911,6 +984,8 @@ export class Game {
       return;
     }
     if (this.spawnQueue.length) {
+      // Hold the next portal while the room is already crowded.
+      if (this.enemies.length + this.portals.length >= WAVE_CAP.alive && !isBoss(this.spawnQueue[this.spawnQueue.length - 1])) return;
       this.spawnT -= dt;
       if (this.spawnT <= 0) {
         this.spawnT = rand(0.5, 1.1) / this.difficulty;
@@ -933,8 +1008,8 @@ export class Game {
         if (pack && this.spawnQueue[this.spawnQueue.length - 1] === type) this.spawnT = 0.2;
         // Bosses rise up on the far side of the room from the player; the bats arrive together.
         if (isBoss(type)) {
-          x = p.x < W / 2 ? 240 : 80;
-          y = type === 'bat' ? (this.spawnQueue.length ? 80 : 140) : 100;
+          x = this.cam.x + (p.x - this.cam.x < W / 2 ? 240 : 80);
+          y = this.cam.y + (type === 'bat' ? (this.spawnQueue.length ? 80 : 140) : 100);
           if (type === 'bat') this.spawnT = 0.2;
         }
         this.portals.push({ x, y, t: 0.9, type, summoned: false });
@@ -990,8 +1065,8 @@ export class Game {
       const bx = ml > 0 ? mx : p.aimX;
       const by = ml > 0 ? my : p.aimY;
       this.burst(p.x, p.y - 6, 12, ['#8a3f9e', '#f5a3c7', '#41a6f6'], 50);
-      p.x = clamp(p.x + bx * 48, AR.x0, AR.x1);
-      p.y = clamp(p.y + by * 48, AR.y0, AR.y1);
+      p.x += bx * 48;
+      p.y += by * 48;
       this.burst(p.x, p.y - 6, 12, ['#8a3f9e', '#f5a3c7', '#41a6f6'], 50);
       p.dashCd = 0.8;
       p.invuln = Math.max(p.invuln, 0.3);
@@ -1012,10 +1087,12 @@ export class Game {
     } else {
       // Slime land: everything is sticky.
       const sticky = this.biome === 'slime' ? 0.7 : 1;
-      p.x += mx * this.hero.speed * this.speedMul * sticky * dt;
-      p.y += my * this.hero.speed * this.speedMul * sticky * dt;
+      const webbed = p.webT > 0 ? SPIDER.webSlow : 1;
+      p.x += mx * this.hero.speed * this.speedMul * sticky * webbed * dt;
+      p.y += my * this.hero.speed * this.speedMul * sticky * webbed * dt;
       if (sticky < 1 && ml > 0 && Math.random() < 0.2) this.particles.push({ x: p.x + rand(-3, 3), y: p.y, vx: 0, vy: 0, life: 0.5, color: pick(['#38b764', '#a7f070']), size: 1, grav: 0, floor: 999 });
     }
+    p.webT -= dt;
     if (p.poisonT > 0) {
       p.poisonT -= dt;
       p.poisonAcc += 3 * dt;
@@ -1030,8 +1107,6 @@ export class Game {
     p.y += p.ky * dt;
     p.kx *= Math.exp(-10 * dt);
     p.ky *= Math.exp(-10 * dt);
-    p.x = clamp(p.x, AR.x0, AR.x1);
-    p.y = clamp(p.y, AR.y0, AR.y1);
     p.moving = ml > 0 && !glitched;
     if (p.moving) p.anim += dt;
 
@@ -1047,8 +1122,8 @@ export class Game {
       p.aimY = ay;
       firing = true;
     } else if (i.mouse.active) {
-      const dx = i.mouse.x - p.x;
-      const dy = i.mouse.y - (p.y - 6);
+      const dx = i.mouse.x + this.cam.x - p.x;
+      const dy = i.mouse.y + this.cam.y - (p.y - 6);
       const d = Math.hypot(dx, dy) || 1;
       p.aimX = dx / d;
       p.aimY = dy / d;
@@ -1066,6 +1141,14 @@ export class Game {
     if (firing && p.shootCd <= 0) {
       if (p.weapon === 'nova') this.castNova();
       else if (p.weapon === 'sword') this.swingSword();
+      else if (p.weapon === 'boomerang') this.throwBoomerang();
+      else if (p.weapon === 'summon') this.raiseSkeleton();
+      else if (p.weapon === 'hammer') this.slamHammer();
+      else if (p.weapon === 'spear') {
+        p.shootCd = SPEAR.cd / this.rateMul;
+        this.bullets.push({ x: p.x + p.aimX * 6, y: p.y - 6 + p.aimY * 6, vx: p.aimX * SPEAR.speed, vy: p.aimY * SPEAR.speed, r: 2, dmg: SPEAR.dmg * this.dmgMul, life: 1.2, enemy: false, spear: true, pierce: 99, hits: new Set() });
+        sfx.toss();
+      }
       else if (p.weapon === 'scatter') {
         p.shootCd = SCATTER.cd / this.rateMul;
         const base = Math.atan2(p.aimY, p.aimX);
@@ -1085,6 +1168,100 @@ export class Game {
         sfx.shoot();
       }
     }
+  }
+
+  /** Adventurer: only one boomerang in the air at a time; holding fire throws it again as you catch it. */
+  private throwBoomerang() {
+    const p = this.player;
+    if (this.bullets.some((b) => b.boomerang)) return;
+    p.shootCd = BOOMERANG.cd / this.rateMul;
+    const v = BOOMERANG.speed;
+    this.bullets.push({ x: p.x + p.aimX * 6, y: p.y - 6 + p.aimY * 6, vx: p.aimX * v, vy: p.aimY * v, r: 3, dmg: BOOMERANG.dmg * this.dmgMul, life: BOOMERANG.out, enemy: false, boomerang: true, hits: new Set() });
+    sfx.toss();
+  }
+
+  /** Mage: a skeleton claws its way out of the ground where you're aiming, and fights on your side. */
+  private raiseSkeleton() {
+    const p = this.player;
+    p.shootCd = SUMMON.cd / this.rateMul;
+    if (this.minions.length >= SUMMON.max) {
+      const old = this.minions.shift()!;
+      this.burst(old.x, old.y - 6, 10, ['#f4f4f4', '#d8cfb4', '#8a3f9e'], 50);
+    }
+    const x = clamp(p.x + p.aimX * 22, AR.x0, AR.x1);
+    const y = clamp(p.y + p.aimY * 22, AR.y0, AR.y1);
+    this.minions.push({ x, y, face: p.face, anim: 0, cd: 0, t: SUMMON.life, rise: SUMMON.rise, swing: 0, aimX: p.aimX, aimY: p.aimY });
+    this.burst(x, y - 2, 14, ['#8a3f9e', '#f5a3c7', '#5d275d'], 40);
+    sfx.summon();
+  }
+
+  /** Knight: brings the warhammer down just in front of him, hitting everything in a ring. */
+  private slamHammer() {
+    const p = this.player;
+    p.shootCd = HAMMER.cd / this.rateMul;
+    p.swingT = HAMMER.swing;
+    const x = clamp(p.x + p.aimX * HAMMER.reach, AR.x0, AR.x1);
+    const y = clamp(p.y + p.aimY * HAMMER.reach, AR.y0, AR.y1);
+    this.shocks.push({ x, y, t: 0.35, r: HAMMER.r });
+    this.shake = Math.max(this.shake, 4);
+    this.burst(x, y - 2, 14, ['#94b0c2', '#566c86', '#f4f4f4'], 70);
+    sfx.slam();
+    for (const e of this.enemies) {
+      if (!this.targetable(e)) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      if (Math.hypot(dx, dy / 0.6) > HAMMER.r + STATS[e.type].r) continue;
+      const d = Math.hypot(dx, dy) || 1;
+      this.hitEnemy(e, HAMMER.dmg * this.dmgMul, dx / d, dy / d, 2.5);
+    }
+    this.enemies = this.enemies.filter((e) => !e.dead);
+  }
+
+  /**
+   * The mage's skeletons: each one marches to the nearest enemy and hacks at it, or tags along beside
+   * you when it's quiet. They crumble to dust when their time is up.
+   */
+  private updateMinions(dt: number) {
+    const p = this.player;
+    this.minions.forEach((m, idx) => {
+      m.t -= dt;
+      m.cd -= dt;
+      m.swing -= dt;
+      if (m.rise > 0) {
+        m.rise -= dt;
+        if (Math.random() < 0.4) this.particles.push({ x: m.x + rand(-4, 4), y: m.y, vx: rand(-15, 15), vy: rand(-30, -10), life: 0.3, color: pick(['#8b5a3c', '#566c86']), size: 1, grav: 120, floor: m.y + 1 });
+        return;
+      }
+      const target = this.nearestEnemy(m.x, m.y, 150);
+      // With nothing to fight, the skeletons fan out behind you.
+      const tx = target ? target.x : p.x - p.face * (12 + idx * 6);
+      const ty = target ? target.y : p.y + (idx % 2 ? 8 : -6);
+      const dx = tx - m.x;
+      const dy = ty - m.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (target && d < STATS[target.type].r + SUMMON.reach) {
+        if (m.cd <= 0) {
+          m.cd = SUMMON.hitCd;
+          m.swing = 0.15;
+          m.aimX = dx / d;
+          m.aimY = dy / d;
+          this.slashes.push({ x: m.x + m.aimX * 8, y: m.y - 6 + m.aimY * 8, ang: Math.atan2(m.aimY, m.aimX), t: 0.12, color: '#f5a3c7', r: 7 });
+          this.hitEnemy(target, SUMMON.dmg * this.dmgMul, m.aimX, m.aimY);
+          sfx.swing();
+        }
+      } else if (d > (target ? 0 : 6)) {
+        const step = Math.min(d, SUMMON.speed * dt);
+        m.x += (dx / d) * step;
+        m.y += (dy / d) * step;
+        m.anim += dt;
+      }
+      if (Math.abs(dx) > 1) m.face = dx < 0 ? -1 : 1;
+      m.x = clamp(m.x, AR.x0, AR.x1);
+      m.y = clamp(m.y, AR.y0, AR.y1);
+      if (m.t <= 0) this.burst(m.x, m.y - 6, 12, ['#f4f4f4', '#d8cfb4', '#94b0c2'], 50);
+    });
+    this.minions = this.minions.filter((m) => m.t > 0);
+    this.enemies = this.enemies.filter((e) => !e.dead);
   }
 
   private nearestEnemy(x: number, y: number, range: number) {
@@ -1467,6 +1644,7 @@ export class Game {
       p.invuln = 2;
       p.poisonT = 0;
       p.glitchT = 0;
+      p.webT = 0;
       this.shake = 6;
       this.novaFlash = 0.4;
       this.burst(p.x, p.y - 6, 40, ['#ffcd75', '#ef7d57', '#ff004d', '#f4f4f4'], 120);
@@ -1514,6 +1692,12 @@ export class Game {
       summoned,
       dead: false,
     });
+    // Mimics arrive pretending to be loot.
+    if (type === 'mimic') {
+      const m = this.enemies[this.enemies.length - 1];
+      m.state = 'lurk';
+      m.t = MIMIC.nap;
+    }
   }
 
   private updateEnemies(dt: number) {
@@ -1528,7 +1712,7 @@ export class Game {
       const d = Math.hypot(dx, dy) || 1;
       let mvx = 0;
       let mvy = 0;
-      let spd = st.speed * speedMul * (e.slowT > 0 ? 0.5 : 1);
+      let spd = st.speed * speedMul * (e.slowT > 0 ? 0.5 : 1) * (e.type === 'armor' && e.combo ? ARMOR.headless : 1);
       e.slowT -= dt;
 
       if (e.type === 'sorcerer') {
@@ -1613,8 +1797,14 @@ export class Game {
         [mvx, mvy] = this.aiImp(e, dx, dy, d, dt);
       } else if (e.type === 'rat') {
         [mvx, mvy] = this.aiRat(e, dx, dy, d, dt);
+      } else if (e.type === 'spider') {
+        [mvx, mvy] = this.aiSpider(e, dx, dy, d, dt);
       } else if (e.type === 'reaper' && (e.state === 'chase' || e.state === 'phase')) {
         [mvx, mvy] = this.aiReaper(e, dx, dy, d, dt);
+      } else if (e.type === 'ghost' && e.state !== 'windup' && e.state !== 'recover') {
+        [mvx, mvy] = this.aiGhost(e, dx, dy, d, dt);
+      } else if (e.type === 'mimic' && e.state === 'lurk') {
+        this.aiMimic(e, d, dt);
       } else if (e.type === 'glitch' && e.state !== 'windup' && e.state !== 'recover') {
         [mvx, mvy] = this.aiGlitch(e, dx, dy, d, dt);
       } else {
@@ -1637,8 +1827,9 @@ export class Game {
             if (e.t <= 0) {
               e.state = 'chase';
               e.atkCd = e.type === 'reaper' ? rand(1.8, 3) : e.type === 'glitch' ? rand(1, 1.6) : 0.2;
-              // A Glitch never sticks around after a slash.
+              // A Glitch never sticks around after a slash, and a ghost soon fades away again.
               if (e.type === 'glitch') e.summonCd = 0;
+              if (e.type === 'ghost') e.summonCd = Math.min(e.summonCd, rand(0.4, 1.2));
             }
             break;
           case 'flee':
@@ -1669,8 +1860,8 @@ export class Game {
       e.kx *= Math.exp(-9 * dt);
       e.ky *= Math.exp(-9 * dt);
       // Flyers flap and float even when hovering still.
-      if (e.type === 'dragon' || e.type === 'imp') e.anim += dt * 2;
-      else if (e.type === 'reaper' || e.type === 'eyeball' || e.type === 'slime' || e.type === 'glitch') e.anim += dt;
+      if (e.type === 'dragon' || e.type === 'imp' || (e.type === 'spider' && (mvx || mvy))) e.anim += dt * 2;
+      else if (e.type === 'reaper' || e.type === 'eyeball' || e.type === 'slime' || e.type === 'glitch' || e.type === 'ghost') e.anim += dt;
       else if (e.type === 'bat') e.anim += dt * (e.state === 'windup' || e.state === 'screech' ? 3 : 1.6);
       else if (mvx || mvy) e.anim += dt * (e.type === 'zombie' ? 0.6 : 1);
     }
@@ -1700,10 +1891,17 @@ export class Game {
         e.x += (dx / d) * (min - d);
         e.y += (dy / d) * (min - d);
       }
-      // The boss is big: keep the whole eye inside the room and below the HUD.
-      const big = e.type === 'eyeball' || e.type === 'bat';
-      e.x = clamp(e.x, big ? 24 : AR.x0, big ? W - 24 : AR.x1);
-      e.y = clamp(e.y, e.type === 'eyeball' ? 76 : e.type === 'bat' ? 66 : AR.y0, AR.y1);
+      if (isBoss(e.type)) {
+        // Bosses stay on screen (that's the bear's wall to charge into): keep the whole eye below the HUD.
+        const big = e.type === 'eyeball' || e.type === 'bat';
+        e.x = clamp(e.x, big ? this.cam.x + 24 : AR.x0, big ? this.cam.x + W - 24 : AR.x1);
+        e.y = clamp(e.y, e.type === 'eyeball' ? this.cam.y + 76 : e.type === 'bat' ? this.cam.y + 66 : AR.y0, AR.y1);
+      } else if (Math.hypot(e.x - p.x, e.y - p.y) > LEASH) {
+        // You can't outrun a wave: stragglers come back in from just off screen.
+        const a = Math.atan2(e.y - p.y, e.x - p.x) + rand(-0.6, 0.6);
+        e.x = p.x + Math.cos(a) * (W / 2 + 20);
+        e.y = p.y + Math.sin(a) * (H / 2 + 20);
+      }
     }
   }
 
@@ -1751,13 +1949,14 @@ export class Game {
       this.slashes.push({ x: e.x + e.aimX * 9 - 1, y: cy + e.aimY * 9, ang, t: 0.16, color: '#ff004d', r: 11 });
       this.slashes.push({ x: e.x + e.aimX * 9 + 1, y: cy + e.aimY * 9, ang, t: 0.16, color: '#73eff7', r: 11 });
     } else {
-      const color = e.type === 'goblin' ? '#ffcd75' : e.type === 'zombie' ? '#a7f070' : '#f4f4f4';
-      this.slashes.push({ x: e.x + e.aimX * 9, y: cy + e.aimY * 9, ang, t: 0.14, color, r: e.type === 'goblin' ? 6 : 8 });
+      const color = e.type === 'goblin' ? '#ffcd75' : e.type === 'zombie' ? '#a7f070' : e.type === 'armor' ? '#73eff7' : '#f4f4f4';
+      this.slashes.push({ x: e.x + e.aimX * 9, y: cy + e.aimY * 9, ang, t: 0.14, color, r: e.type === 'goblin' ? 6 : e.type === 'armor' ? 12 : 8 });
     }
     if (e.type === 'goblin') sfx.stab();
     else if (e.type === 'glitch') sfx.glitch();
+    else if (e.type === 'mimic') sfx.chomp();
     else sfx.swing();
-    const extra = e.type === 'skeleton' ? 10 : e.type === 'goblin' ? 12 : e.type === 'reaper' ? 8 : 6;
+    const extra = e.type === 'skeleton' ? 10 : e.type === 'goblin' ? 12 : e.type === 'reaper' || e.type === 'armor' ? 8 : 6;
     const hit = p.invuln <= 0 && Math.hypot(p.x - e.x, p.y - e.y) < st.range + extra;
     if (hit) this.hurtPlayer(st.dmg, e.aimX, e.aimY);
     if (e.type === 'goblin') {
@@ -2369,6 +2568,60 @@ export class Game {
     }
   }
 
+  /**
+   * Ghosts drift slowly towards you, wobbling. Every few seconds (and after every attack) one fades
+   * out completely (`phase`, untargetable) and glides fast to `tx`/`ty`, just past you on the other
+   * side, then reappears and winds up a BOO! (the generic melee strike). `summonCd` is the vanish timer.
+   */
+  private aiGhost(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
+    const st = STATS.ghost;
+    e.face = dx < 0 ? -1 : 1;
+    if (e.state === 'phase') {
+      e.t -= dt;
+      const gx = e.tx - e.x;
+      const gy = e.ty - e.y;
+      const gd = Math.hypot(gx, gy) || 1;
+      if (e.t > 0 && gd > 4) return [(gx / gd) * GHOST.glide, (gy / gd) * GHOST.glide];
+      e.state = 'chase';
+      e.summonCd = rand(GHOST.every[0], GHOST.every[1]);
+      this.burst(e.x, e.y - st.hy, 6, ['#f4f4f4', '#94b0c2'], 30);
+      if (d < st.range + 10) {
+        this.startWindup(e, dx / d, dy / d);
+        this.texts.push({ x: e.x, y: e.y - 24, text: 'BOO!', t: 0.7, color: '#f4f4f4' });
+        sfx.boo();
+      }
+      return [0, 0];
+    }
+    e.state = 'chase';
+    e.summonCd -= dt;
+    if (e.summonCd <= 0) {
+      e.state = 'phase';
+      e.t = GHOST.vanish;
+      e.tx = clamp(this.player.x + (dx / d) * 14, AR.x0, AR.x1);
+      e.ty = clamp(this.player.y + (dy / d) * 10, AR.y0, AR.y1);
+      return [0, 0];
+    }
+    if (d < st.range + 6 && e.atkCd <= 0) {
+      this.startWindup(e, dx / d, dy / d);
+      return [0, 0];
+    }
+    const w = Math.sin(this.time * 3 + e.tx) * 0.7;
+    return [dx / d - (dy / d) * w, dy / d + (dx / d) * w];
+  }
+
+  /** A mimic sits perfectly still until you come close, hit it, or it gets bored of waiting. */
+  private aiMimic(e: Enemy, d: number, dt: number) {
+    e.t -= dt;
+    e.kx = 0;
+    e.ky = 0;
+    if (d > MIMIC.wake && e.t > 0 && e.hp >= e.maxHp) return;
+    e.state = 'chase';
+    e.atkCd = 0.35;
+    this.texts.push({ x: e.x, y: e.y - 22, text: 'SURPRISE!', t: 0.9, color: '#ff004d' });
+    this.burst(e.x, e.y - 8, 8, ['#ffcd75', '#8b5a3c'], 50);
+    sfx.chomp();
+  }
+
   /** Imps flit around you erratically at mid range, throwing small fireballs. */
   private aiImp(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
     const p = this.player;
@@ -2457,6 +2710,84 @@ export class Game {
     }
   }
 
+  /**
+   * Giant spiders skitter around you at mid range spitting webs. Once you're webbed (or you get too
+   * close) they crouch, then rush straight in to bite and scuttle back out.
+   */
+  private aiSpider(e: Enemy, dx: number, dy: number, d: number, dt: number): [number, number] {
+    const p = this.player;
+    const st = STATS.spider;
+    switch (e.state) {
+      case 'cast':
+        e.t -= dt;
+        if (e.t <= 0) {
+          const ox = e.x + e.face * 8;
+          const oy = e.y - 5;
+          const a = Math.atan2(p.y - 6 - oy, p.x - ox);
+          this.bullets.push({ x: ox, y: oy, vx: Math.cos(a) * SPIDER.webSpeed, vy: Math.sin(a) * SPIDER.webSpeed, r: 3, dmg: SPIDER.webDmg, life: 2.5, enemy: true, web: true });
+          sfx.toss();
+          e.state = 'chase';
+          e.fireCd = rand(2.2, 3.4) / this.difficulty;
+        }
+        return [0, 0];
+      case 'windup':
+        e.t -= dt;
+        if (e.t <= 0) {
+          e.state = 'charge';
+          e.t = SPIDER.rush;
+          e.aimX = dx / d;
+          e.aimY = dy / d;
+          e.face = dx < 0 ? -1 : 1;
+        }
+        return [0, 0];
+      case 'charge':
+        e.t -= dt;
+        if (d < st.r + 7) {
+          this.hurtPlayer(st.dmg, dx / d, dy / d);
+          sfx.bite();
+          e.state = 'recover';
+          e.t = st.recover;
+          e.atkCd = rand(1.5, 2.5) / this.difficulty;
+          return [0, 0];
+        }
+        if (e.t <= 0) {
+          e.state = 'recover';
+          e.t = st.recover;
+          e.atkCd = 1;
+        }
+        return [e.aimX * SPIDER.rushSpeed, e.aimY * SPIDER.rushSpeed];
+      case 'recover':
+        e.t -= dt;
+        if (e.t <= 0) e.state = 'chase';
+        e.face = dx < 0 ? -1 : 1;
+        return [(-dx / d) * 0.8, (-dy / d) * 0.8];
+      default: {
+        e.state = 'chase';
+        e.face = dx < 0 ? -1 : 1;
+        e.fireCd -= dt;
+        if (e.atkCd <= 0 && d < 110 && (p.webT > 0 || d < 30)) {
+          e.state = 'windup';
+          e.t = SPIDER.crouch;
+          return [0, 0];
+        }
+        if (e.fireCd <= 0 && d < 150 && p.webT <= 0) {
+          e.state = 'cast';
+          e.t = st.windup;
+          return [0, 0];
+        }
+        e.strafeT -= dt;
+        if (e.strafeT <= 0) {
+          e.strafe *= -1;
+          e.strafeT = rand(1, 2.5);
+        }
+        // Skitters in short bursts (strafeT doubles as a per-spider phase offset).
+        if ((this.time + e.strafeT) % 0.6 > 0.42) return [0, 0];
+        const want = d < 50 ? -1 : d > 90 ? 1 : 0;
+        return [(dx / d) * want + (-dy / d) * e.strafe, (dy / d) * want + (dx / d) * e.strafe];
+      }
+    }
+  }
+
   /** Where a thunder rat's bolt comes from: its nose. */
   private ratNose(e: Enemy) {
     return { x: e.x + e.face * 6, y: e.y - 4 };
@@ -2466,8 +2797,8 @@ export class Game {
   private ratZap(e: Enemy) {
     const p = this.player;
     const o = this.ratNose(e);
-    const x1 = clamp(o.x + e.aimX * RAT.reach, 6, W - 6);
-    const y1 = clamp(o.y + e.aimY * RAT.reach, 30, H - 4);
+    const x1 = clamp(o.x + e.aimX * RAT.reach, SCR.x0, SCR.x1);
+    const y1 = clamp(o.y + e.aimY * RAT.reach, SCR.y0, SCR.y1);
     this.zaps.push({ x0: o.x, y0: o.y, x1, y1, t: RAT.flash, seed: Math.floor(Math.random() * 1e6) });
     this.burst(x1, y1, 6, ['#ffcd75', '#f4f4f4'], 50);
     sfx.zap();
@@ -2483,6 +2814,8 @@ export class Game {
     if (e.type === 'dragon') return 5 + Math.round(Math.sin(e.anim * 2.5) * 1.5);
     if (e.type === 'reaper') return 2 + Math.round(Math.sin(e.anim * 3));
     if (e.type === 'imp') return 7 + Math.round(Math.sin(e.anim * 4) * 2);
+    if (e.type === 'ghost') return 4 + Math.round(Math.sin(e.anim * 3) * 1.5);
+    if (e.type === 'mimic' && e.state !== 'lurk') return Math.round(Math.abs(Math.sin(e.anim * 8)) * 3);
     if (e.type === 'wolf' && e.state === 'charge') return Math.round(Math.sin((1 - e.t / WOLF.pounce) * Math.PI) * 5);
     if (e.type === 'eyeball') return 10 + Math.round(Math.sin(e.anim * 2) * 2);
     if (e.type === 'slime') {
@@ -2507,8 +2840,8 @@ export class Game {
   /** How far the laser reaches before it hits a wall. */
   private beamLength(e: Enemy) {
     const o = this.beamOrigin(e);
-    const tx = e.aimX > 0 ? (W - 6 - o.x) / e.aimX : e.aimX < 0 ? (6 - o.x) / e.aimX : Infinity;
-    const ty = e.aimY > 0 ? (H - 4 - o.y) / e.aimY : e.aimY < 0 ? (30 - o.y) / e.aimY : Infinity;
+    const tx = e.aimX > 0 ? (SCR.x1 - o.x) / e.aimX : e.aimX < 0 ? (SCR.x0 - o.x) / e.aimX : Infinity;
+    const ty = e.aimY > 0 ? (SCR.y1 - o.y) / e.aimY : e.aimY < 0 ? (SCR.y0 - o.y) / e.aimY : Infinity;
     return Math.max(0, Math.min(tx, ty));
   }
 
@@ -2649,6 +2982,34 @@ export class Game {
         if (b.life <= 0) this.landBlob(b);
         continue;
       }
+      if (b.boomerang) {
+        // Out until its time is up (or it leaves the screen), then it heads back to your hand.
+        const out = b.x < this.cam.x || b.x > this.cam.x + W || b.y < this.cam.y + 12 || b.y > this.cam.y + H;
+        if (!b.back && (b.life <= 0 || out)) {
+          b.back = true;
+          b.hits = new Set();
+          b.life = 3;
+        }
+        if (b.back) {
+          const dx = p.x - b.x;
+          const dy = p.y - 6 - b.y;
+          const d = Math.hypot(dx, dy) || 1;
+          b.vx = (dx / d) * BOOMERANG.speed;
+          b.vy = (dy / d) * BOOMERANG.speed;
+          // Caught (or lost if you died, which the 3s life covers).
+          if (d < 7) b.life = 0;
+        }
+        if (b.life <= 0) continue;
+        for (const e of this.enemies) {
+          if (!this.targetable(e) || b.hits!.has(e)) continue;
+          if (Math.hypot(b.x - e.x, b.y - (e.y - STATS[e.type].hy)) < STATS[e.type].r + b.r + 1) {
+            b.hits!.add(e);
+            const d = Math.hypot(b.vx, b.vy) || 1;
+            this.hitEnemy(e, this.armorDmg(e, b), b.vx / d, b.vy / d);
+          }
+        }
+        continue;
+      }
       if (b.homing) {
         const t = this.nearestEnemy(b.x, b.y + 6, 160);
         if (t) {
@@ -2671,7 +3032,7 @@ export class Game {
           continue;
         }
       }
-      if (b.x < 6 || b.x > W - 6 || b.y < 30 || b.y > H - 4) {
+      if (b.x < SCR.x0 || b.x > SCR.x1 || b.y < SCR.y0 || b.y > SCR.y1) {
         b.life = 0;
         if (b.bomb) {
           this.explode(b);
@@ -2680,16 +3041,23 @@ export class Game {
         if (b.sonic) this.burst(b.x, b.y, 3, ['#f5a3c7', '#8a3f9e'], 30);
         else if (b.sand) this.burst(b.x, b.y, 3, ['#bf9562', '#7a5636'], 30);
         else if (b.shard || b.packet) this.burst(b.x, b.y, 4, ['#ff004d', '#73eff7', '#8a3f9e'], 30);
+        else if (b.web) this.burst(b.x, b.y, 4, ['#f4f4f4', '#94b0c2'], 30);
+        else if (b.spear) this.burst(b.x, b.y, 4, ['#ffcd75', '#8b5a3c'], 30);
         else if (!b.flame) this.burst(b.x, b.y, 4, b.tear ? ['#3b5dc9', '#73eff7'] : b.enemy ? ['#ef7d57', '#ffcd75'] : ['#41a6f6', '#73eff7'], 30);
         continue;
       }
       if (b.enemy) {
         if ((b.shard || b.packet) && Math.random() < 0.5) this.particles.push({ x: b.x + rand(-3, 3), y: b.y + rand(-3, 3), vx: 0, vy: 0, life: 0.15, color: pick(['#ff004d', '#73eff7', '#8a3f9e']), size: 1, grav: 0, floor: 999 });
-        else if (!b.flame && !b.sonic && !b.sand && !b.shard && !b.packet && Math.random() < 0.5) this.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, color: pick(b.tear ? ['#3b5dc9', '#73eff7', '#29366f'] : ['#ef7d57', '#ffcd75', '#b13e53']), size: 1, grav: 0, floor: 999 });
+        else if (!b.flame && !b.sonic && !b.sand && !b.shard && !b.packet && !b.web && Math.random() < 0.5) this.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, color: pick(b.tear ? ['#3b5dc9', '#73eff7', '#29366f'] : ['#ef7d57', '#ffcd75', '#b13e53']), size: 1, grav: 0, floor: 999 });
         if (p.invuln <= 0 && Math.hypot(b.x - p.x, b.y - (p.y - 6)) < b.r + 4) {
           b.life = 0;
           const d = Math.hypot(b.vx, b.vy) || 1;
-          if (this.hurtPlayer(b.dmg, b.vx / d, b.vy / d) && b.packet) this.glitchPlayer();
+          const hit = this.hurtPlayer(b.dmg, b.vx / d, b.vy / d);
+          if (hit && b.packet) this.glitchPlayer();
+          if (hit && b.web) {
+            if (p.webT <= 0) this.texts.push({ x: p.x, y: p.y - 28, text: 'WEBBED!', t: 0.8, color: '#f4f4f4' });
+            p.webT = SPIDER.webT;
+          }
         }
       } else {
         for (const e of this.enemies) {
@@ -2699,7 +3067,7 @@ export class Game {
               b.pierce--;
               b.hits.add(e);
               const d = Math.hypot(b.vx, b.vy) || 1;
-              this.hitEnemy(e, b.dmg, b.vx / d, b.vy / d);
+              this.hitEnemy(e, this.armorDmg(e, b), b.vx / d, b.vy / d, b.spear ? 1.3 : 1);
               break;
             }
             b.life = 0;
@@ -2709,7 +3077,7 @@ export class Game {
             }
             const d = Math.hypot(b.vx, b.vy) || 1;
             // Pet dragon flames come in a stream, so each one only nudges.
-            this.hitEnemy(e, b.dmg, b.vx / d, b.vy / d, b.flame ? 0.15 : 1);
+            this.hitEnemy(e, this.armorDmg(e, b), b.vx / d, b.vy / d, b.flame ? 0.15 : 1);
             break;
           }
         }
@@ -2717,6 +3085,14 @@ export class Game {
     }
     this.bullets = this.bullets.filter((b) => b.life > 0);
     this.enemies = this.enemies.filter((e) => !e.dead);
+  }
+
+  /** Bolts and fireballs glance off living armour (with a clang); the spear goes straight through it. */
+  private armorDmg(e: Enemy, b: Bullet) {
+    if (e.type !== 'armor' || b.spear || b.bomb) return b.dmg;
+    this.burst(b.x, b.y, 4, ['#f4f4f4', '#ffcd75'], 60);
+    sfx.parry();
+    return b.dmg * ARMOR.glance;
   }
 
   private explode(b: Bullet) {
@@ -2746,7 +3122,16 @@ export class Game {
     e.ky += dy * kb;
     this.burst(e.x, e.y - STATS[e.type].hy, 3, ['#f4f4f4', '#ffcd75'], 40);
     sfx.hit();
-    if (e.hp <= 0) this.killEnemy(e);
+    if (e.hp <= 0) return this.killEnemy(e);
+    if (e.type === 'armor' && !e.combo && e.hp < e.maxHp / 2) {
+      // Its helmet goes flying, and with nothing left to protect it gets angry.
+      e.combo = 1;
+      for (let k = 0; k < 6; k++) {
+        this.particles.push({ x: e.x + rand(-2, 2), y: e.y - 14, vx: dx * 40 + rand(-25, 25), vy: rand(-90, -50), life: 0.8, color: pick(['#566c86', '#94b0c2', '#ff004d']), size: 2, grav: 260, floor: e.y + rand(-2, 3) });
+      }
+      this.texts.push({ x: e.x, y: e.y - 24, text: 'CLANG!', t: 0.8, color: '#94b0c2' });
+      sfx.parry();
+    }
   }
 
   private killEnemy(e: Enemy) {
@@ -2781,6 +3166,10 @@ export class Game {
       wolf: ['#566c86', '#333c57', '#94b0c2', '#b13e53'],
       imp: ['#b13e53', '#ff004d', '#5d275d', '#ffcd75'],
       rat: ['#ffcd75', '#ef7d57', '#f4f4f4'],
+      armor: ['#566c86', '#94b0c2', '#333c57', '#73eff7'],
+      spider: ['#333c57', '#1a1c2c', '#566c86', '#ff004d'],
+      ghost: ['#f4f4f4', '#94b0c2', '#73eff7'],
+      mimic: ['#8b5a3c', '#ffcd75', '#f5a3c7', '#1a1c2c'],
     };
     const boss = isBoss(e.type);
     if (boss) {
@@ -2797,9 +3186,9 @@ export class Game {
         vy: rand(-90, -20),
         life: rand(0.4, 0.9),
         color: pick(colors[e.type]),
-        size: e.type === 'skeleton' || e.type === 'troll' ? 2 : 1 + Math.round(Math.random()),
+        size: e.type === 'skeleton' || e.type === 'troll' || e.type === 'armor' || e.type === 'mimic' ? 2 : 1 + Math.round(Math.random()),
         // Magic folk drift upwards as they go.
-        grav: e.type === 'sorcerer' || e.type === 'reaper' ? -40 : 260,
+        grav: e.type === 'sorcerer' || e.type === 'reaper' || e.type === 'ghost' ? -40 : 260,
         floor: e.y + rand(-2, 3),
       });
     }
@@ -2889,8 +3278,8 @@ export class Game {
     g.setTransform(RES, 0, 0, RES, 0, 0);
     g.save();
     if (this.shake > 0) g.translate(Math.round(rand(-this.shake, this.shake)), Math.round(rand(-this.shake, this.shake)));
-    this.blit(this.background, 0, 0);
-    this.drawTorches();
+    g.translate(-half(this.cam.x), -half(this.cam.y));
+    this.drawFloor();
 
     if (this.state === 'title') {
       g.restore();
@@ -2915,6 +3304,7 @@ export class Game {
 
     const drawables: { y: number; draw: () => void }[] = this.enemies.map((e) => ({ y: e.y, draw: () => this.drawEnemy(e) }));
     if (this.state === 'playing') for (const pet of this.pets) drawables.push({ y: pet.y, draw: () => this.drawPet(pet) });
+    if (this.state === 'playing') for (const m of this.minions) drawables.push({ y: m.y, draw: () => this.drawMinion(m) });
     if (this.state === 'playing' || (this.state === 'dying' && Math.floor(this.dyingT * 10) % 2 === 0)) {
       drawables.push({ y: this.player.y, draw: () => this.drawPlayer() });
     }
@@ -2937,6 +3327,7 @@ export class Game {
       if (t.icon) this.blit(ICONS[t.icon], x - t.text.length * 4 - 10, y);
     }
     g.restore();
+    if (this.state === 'playing') this.drawOffscreen();
 
     if (this.hurtFlash > 0) {
       g.fillStyle = `rgba(255,0,77,${this.hurtFlash})`;
@@ -2979,20 +3370,73 @@ export class Game {
     g.fillText(s, x, y);
   }
 
-  private drawTorches() {
-    const g = this.g;
-    const [outer, mid, core] = LOOKS[this.biome].flame;
-    for (const tx of TORCHES) {
-      const f = Math.floor(this.time * 10 + tx) % 3;
-      g.fillStyle = outer;
-      g.fillRect(tx - 2, 11 - f, 5, 5 + f);
-      g.fillStyle = mid;
-      g.fillRect(tx - 1, 12 - f, 3, 4 + f);
-      g.fillStyle = core;
-      g.fillRect(tx, 13 - (f % 2), 1, 2);
+  /** The endless floor: the map's texture repeated under the view, plus braziers dotted about. */
+  private drawFloor() {
+    const bg = this.background;
+    const { x, y } = this.cam;
+    for (let ty = Math.floor(y / BG) * BG; ty < y + H; ty += BG) {
+      for (let tx = Math.floor(x / BG) * BG; tx < x + W; tx += BG) this.blit(bg, tx, ty);
+    }
+    for (let cy = Math.floor(y / BRAZIER_CELL) - 1; cy * BRAZIER_CELL < y + H + 16; cy++) {
+      for (let cx = Math.floor(x / BRAZIER_CELL); cx * BRAZIER_CELL < x + W; cx++) {
+        const rng = mulberry32(cx * 73856093 + cy * 19349663);
+        if (rng() > 0.45) continue;
+        this.drawBrazier(Math.round(cx * BRAZIER_CELL + 12 + rng() * (BRAZIER_CELL - 24)), Math.round(cy * BRAZIER_CELL + 12 + rng() * (BRAZIER_CELL - 24)));
+      }
     }
   }
 
+  /** A stone brazier with the map's flame (they took over from the old wall torches). */
+  private drawBrazier(bx: number, by: number) {
+    const g = this.g;
+    const L = LOOKS[this.biome];
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    g.fillRect(bx - 5, by, 11, 2);
+    g.fillStyle = L.wall;
+    g.fillRect(bx - 2, by - 5, 5, 6);
+    g.fillStyle = L.brickLo;
+    g.fillRect(bx - 4, by - 8, 9, 3);
+    g.fillStyle = L.brickHi;
+    g.fillRect(bx - 4, by - 8, 9, 1);
+    const [outer, mid, core] = L.flame;
+    const f = Math.floor(this.time * 10 + bx + by) % 3;
+    g.fillStyle = outer;
+    g.fillRect(bx - 2, by - 13 - f, 5, 5 + f);
+    g.fillStyle = mid;
+    g.fillRect(bx - 1, by - 12 - f, 3, 4 + f);
+    g.fillStyle = core;
+    g.fillRect(bx, by - 11 - (f % 2), 1, 2);
+  }
+
+  /** Little arrows at the screen edge pointing at enemies you can't see. */
+  private drawOffscreen() {
+    const g = this.g;
+    const blink = Math.floor(this.time * 4) % 2;
+    for (const e of this.enemies) {
+      const sx = e.x - this.cam.x;
+      const sy = e.y - 6 - this.cam.y;
+      if (sx >= 0 && sx <= W && sy >= 12 && sy <= H) continue;
+      const ax = clamp(sx, 4, W - 5);
+      const ay = clamp(sy, 15, H - 5);
+      g.fillStyle = isBoss(e.type) ? (blink ? '#ffcd75' : '#ff004d') : '#ff004d';
+      g.fillRect(Math.round(ax) - 1, Math.round(ay) - 1, 3, 3);
+      g.fillStyle = '#1a1c2c';
+      g.fillRect(Math.round(ax), Math.round(ay), 1, 1);
+    }
+  }
+
+  /** Eases the camera towards the player and moves the play area along with it. */
+  private updateCamera(dt: number, snap = false) {
+    const p = this.player;
+    const tx = p.x - W / 2;
+    const ty = p.y - 4 - H / 2;
+    const k = snap ? 1 : 1 - Math.exp(-8 * dt);
+    this.cam.x += (tx - this.cam.x) * k;
+    this.cam.y += (ty - this.cam.y) * k;
+    const { x, y } = this.cam;
+    Object.assign(AR, { x0: x + 12, y0: y + 30, x1: x + W - 12, y1: y + H - 8 });
+    Object.assign(SCR, { x0: x - 40, y0: y - 40, x1: x + W + 40, y1: y + H + 40 });
+  }
 
   private drawSet(set: SpriteSet, frame: number, face: number, x: number, y: number, white: boolean) {
     const frames = white ? (face < 0 ? set.wl : set.wr) : face < 0 ? set.l : set.r;
@@ -3054,9 +3498,46 @@ export class Game {
       g.fillStyle = Math.floor(this.time * 15) % 2 ? 'rgba(255,0,77,0.35)' : 'rgba(115,239,247,0.35)';
       g.fillRect(x0 + 2, y0 + Math.floor(rng() * img.height), img.width - 4, 2);
     }
+    if (p.webT > 0) {
+      // Stuck in a giant spider's web.
+      const top = p.y - hop - 14;
+      this.pixelLine(p.x - 6, top, p.x + 6, top + 12, 'rgba(244,244,244,0.75)');
+      this.pixelLine(p.x + 6, top, p.x - 6, top + 12, 'rgba(244,244,244,0.75)');
+      g.fillStyle = 'rgba(244,244,244,0.75)';
+      g.fillRect(Math.round(p.x - 6), Math.round(top + 6), 13, 1);
+    }
     const hx = p.x + p.face * 4;
     const hy = p.y - 6 - hop;
-    if (p.weapon === 'sword') {
+    if (p.weapon === 'boomerang') {
+      // In your hand until it's thrown.
+      if (!this.bullets.some((b) => b.boomerang)) this.drawBoomerang(hx + p.aimX * 4, hy + p.aimY * 4, Math.atan2(p.aimY, p.aimX));
+    } else if (p.weapon === 'summon') {
+      // A bone staff topped with a purple skull-light.
+      this.pixelLine(hx - p.aimX * 3, hy - p.aimY * 3, hx + p.aimX * 8, hy + p.aimY * 8, '#d8cfb4');
+      g.fillStyle = p.shootCd > SUMMON.cd * 0.6 ? '#f5a3c7' : '#8a3f9e';
+      g.fillRect(Math.round(hx + p.aimX * 9 - 1), Math.round(hy + p.aimY * 9 - 1), 3, 3);
+    } else if (p.weapon === 'hammer') {
+      // Raised overhead between swings, slammed down where the shock lands.
+      const down = p.swingT > 0;
+      const ang = down ? Math.atan2(p.aimY, p.aimX) : -Math.PI / 2 - p.face * 0.5;
+      const len = down ? 13 : 10;
+      const tx = hx + Math.cos(ang) * len;
+      const ty = hy + Math.sin(ang) * len;
+      this.pixelLine(hx, hy, tx, ty, '#8b5a3c');
+      g.fillStyle = '#566c86';
+      g.fillRect(Math.round(tx - 2), Math.round(ty - 2), 5, 4);
+      g.fillStyle = down ? '#f4f4f4' : '#94b0c2';
+      g.fillRect(Math.round(tx - 2), Math.round(ty - 2), 5, 1);
+    } else if (p.weapon === 'spear') {
+      // Held back over the shoulder, ready to throw (gone for a moment after a throw).
+      if (p.shootCd < SPEAR.cd * 0.5) {
+        const bx = hx - p.aimX * 6;
+        const by = hy - p.aimY * 6 - 2;
+        this.pixelLine(bx, by, bx + p.aimX * 14, by + p.aimY * 14, '#8b5a3c');
+        g.fillStyle = '#ffcd75';
+        g.fillRect(Math.round(bx + p.aimX * 14 - 1), Math.round(by + p.aimY * 14 - 1), 2, 2);
+      }
+    } else if (p.weapon === 'sword') {
       // Sweeps across the arc while swinging, otherwise points at the cursor.
       let ang = Math.atan2(p.aimY, p.aimX);
       if (p.swingT > 0) ang += SWORD.arc * ((1 - p.swingT / SWORD.swing) * 2 - 1);
@@ -3118,7 +3599,7 @@ export class Game {
       top = pet.y - hop - 12;
     } else {
       this.shadow(pet.x, pet.y, 10);
-      this.drawSet(SPR.spider, Math.floor(pet.anim * 8) % 2, pet.face, pet.x, pet.y, false);
+      this.drawSet(SPR.petSpider, Math.floor(pet.anim * 8) % 2, pet.face, pet.x, pet.y, false);
     }
     // A little heart so nobody shoots their own pet by mistake.
     if (Math.floor(this.time * 1.5) % 4 === 0) {
@@ -3130,6 +3611,48 @@ export class Game {
       g.fillRect(hx - 1, hy + 1, 3, 1);
       g.fillRect(hx, hy + 2, 1, 1);
     }
+  }
+
+  /** A spinning wooden boomerang: two arms in a V around (x, y). */
+  private drawBoomerang(x: number, y: number, ang: number) {
+    for (const da of [-1.1, 1.1]) {
+      const a = ang + da;
+      this.pixelLine(x, y, x + Math.cos(a) * 4, y + Math.sin(a) * 4, '#ef7d57');
+    }
+    this.g.fillStyle = '#ffcd75';
+    this.g.fillRect(Math.round(x), Math.round(y), 1, 1);
+  }
+
+  /** The mage's skeletons: friendly bones with cyan eyes and a purple glow under their feet. */
+  private drawMinion(m: Minion) {
+    const g = this.g;
+    // Crumbling skeletons flicker out.
+    if (m.t < 1.5 && Math.floor(m.t * 8) % 2) return;
+    const set = this.minionSprite;
+    const img = set.r[0];
+    if (m.rise > 0) {
+      // Climbing out of the ground: only the top part shows.
+      const k = 1 - m.rise / SUMMON.rise;
+      const rows = Math.max(1, Math.round(img.height * k));
+      const src = (m.face < 0 ? set.l : set.r)[0];
+      this.blitRows(src, 0, rows, half(m.x - img.width / 2), half(m.y - rows + 1));
+      return;
+    }
+    g.fillStyle = 'rgba(138,63,158,0.45)';
+    g.fillRect(Math.round(m.x - 6), Math.round(m.y), 12, 2);
+    this.shadow(m.x, m.y, 8);
+    this.drawSet(set, Math.floor(m.anim * 8) % 2, m.face, m.x, m.y, false);
+    const hx = m.x + m.face * 5;
+    const hy = m.y - 7;
+    if (m.swing > 0) this.pixelLine(hx, hy, hx + m.aimX * 9, hy + m.aimY * 9, '#f4f4f4');
+    else this.pixelLine(hx, hy, hx, hy - 8, '#94b0c2');
+  }
+
+  private _minionSprite: SpriteSet | null = null;
+  private get minionSprite() {
+    // The enemy skeleton with cyan eyes instead of red ones.
+    this._minionSprite ??= recolorSet(SPR.skeleton, { R: 'C' });
+    return this._minionSprite;
   }
 
   private drawNova(n: Nova) {
@@ -3168,6 +3691,30 @@ export class Game {
       g.fillRect(cx + 1, cy - 3, 1, 1);
       g.fillStyle = ready && Math.floor(this.time * 8) % 2 ? '#ffcd75' : '#ef7d57';
       g.fillRect(cx + 2, cy - 4, 1, 1);
+    } else if (w === 'boomerang') {
+      this.drawBoomerang(cx - 1, cy + 1, -Math.PI / 4);
+    } else if (w === 'summon') {
+      // A little skull.
+      g.fillStyle = '#f4f4f4';
+      g.fillRect(cx - 3, cy - 3, 6, 4);
+      g.fillRect(cx - 2, cy + 1, 4, 2);
+      g.fillStyle = '#73eff7';
+      g.fillRect(cx - 2, cy - 1, 1, 1);
+      g.fillRect(cx + 1, cy - 1, 1, 1);
+      g.fillStyle = '#1a1c2c';
+      g.fillRect(cx - 1, cy + 1, 1, 1);
+      g.fillRect(cx + 1, cy + 1, 1, 1);
+    } else if (w === 'hammer') {
+      this.pixelLine(cx - 4, cy + 4, cx + 1, cy - 1, '#8b5a3c');
+      g.fillStyle = '#566c86';
+      g.fillRect(cx - 1, cy - 4, 5, 4);
+      g.fillStyle = '#94b0c2';
+      g.fillRect(cx - 1, cy - 4, 5, 1);
+    } else if (w === 'spear') {
+      this.pixelLine(cx - 4, cy + 4, cx + 2, cy - 2, '#8b5a3c');
+      g.fillStyle = '#ffcd75';
+      g.fillRect(cx + 2, cy - 4, 2, 2);
+      g.fillRect(cx + 3, cy - 3, 1, 1);
     } else if (w === 'sword') {
       this.pixelLine(cx - 1, cy + 1, cx + 4, cy - 4, '#94b0c2');
       g.fillStyle = '#f4f4f4';
@@ -3210,8 +3757,9 @@ export class Game {
       g.fillRect(x + 13, y, 1, 13);
     });
     const nameX = 6 + list.length * 16;
-    this.text(p.weapon.toUpperCase(), nameX, y + 3, '#f4f4f4');
-    if (p.specialCd > 0) this.text(`NOVA ${Math.ceil(p.specialCd)}s`, nameX + 62, y + 3, '#566c86');
+    const name = WEAPON_NAMES[p.weapon];
+    this.text(name, nameX, y + 3, '#f4f4f4');
+    if (p.specialCd > 0) this.text(`NOVA ${Math.ceil(p.specialCd)}s`, nameX + Math.max(62, name.length * 8 + 6), y + 3, '#566c86');
   }
 
   private drawEnemy(e: Enemy) {
@@ -3224,8 +3772,10 @@ export class Game {
     const lift = this.lift(e);
     // Reapers fade out, then back in somewhere else.
     if (e.state === 'phase') g.globalAlpha = clamp(Math.abs(e.t - PHASE / 2) / (PHASE / 2), 0.1, 1);
+    // Ghosts are see-through, and nearly invisible while they're gliding in.
+    if (e.type === 'ghost') g.globalAlpha = e.state === 'phase' ? (Math.floor(this.time * 8) % 5 ? 0.06 : 0.15) : 0.75;
     if (e.state === 'warp') g.globalAlpha = Math.floor(this.time * 30) % 2 ? 0.2 : 0.8;
-    const shadows: Partial<Record<EnemyType, number>> = { troll: 18, zombie: 12, wolf: 12, goblin: 8, rat: 8, imp: 6 };
+    const shadows: Partial<Record<EnemyType, number>> = { troll: 18, zombie: 12, wolf: 12, goblin: 8, rat: 8, imp: 6, armor: 12, spider: 16, ghost: 8, mimic: 14 };
     this.shadow(e.x, e.y, shadows[e.type] ?? 10);
     const frame = Math.floor(e.anim * 6) % 2;
     let ox = 0;
@@ -3238,11 +3788,12 @@ export class Game {
     }
     if (e.type === 'dragon' && e.state === 'breathe') ox = Math.floor(this.time * 30) % 2 ? -e.face : 0;
     // Wolves crouch before a pounce.
-    if (e.type === 'wolf' && e.state === 'windup') oy = 1;
+    if ((e.type === 'wolf' || e.type === 'spider') && e.state === 'windup') oy = 1;
     // Thunder rats flash white with static once they've locked on.
     const sparking = e.type === 'rat' && e.state === 'windup' && (e.t <= RAT.lock || Math.floor(this.time * 12) % 2 === 0);
-    const fr = e.type === 'slime' ? this.slimeFrame(e) : e.type === 'wolf' && e.state === 'charge' ? 1 : frame;
-    this.drawSet(this.enemySprite(e.type), fr, e.face, e.x + ox, e.y - lift + oy, white || (sparking && Math.floor(this.time * 20) % 2 === 0));
+    const fr = e.type === 'slime' ? this.slimeFrame(e) : e.type === 'wolf' && e.state === 'charge' ? 1 : e.type === 'mimic' ? (e.state === 'lurk' ? 0 : e.state === 'windup' ? 1 : frame) : frame;
+    const set = e.type === 'armor' && e.combo ? SPR.armorHeadless : this.enemySprite(e.type);
+    this.drawSet(set, fr, e.face, e.x + ox, e.y - lift + oy, white || (sparking && Math.floor(this.time * 20) % 2 === 0));
     if (e.type === 'glitch') this.drawGlitchNoise(e, frame, e.state === 'warp' || e.state === 'cast' ? 4 : 1);
 
     if (e.type === 'skeleton') {
@@ -3293,6 +3844,20 @@ export class Game {
       }
     } else if (e.type === 'troll') {
       this.drawClub(e);
+    } else if (e.type === 'armor') {
+      this.drawGreatsword(e, ox);
+      if (e.combo) {
+        // Nothing inside but a ghostly flame where its head used to be.
+        const f = Math.floor(this.time * 10);
+        g.fillStyle = f % 2 ? '#73eff7' : '#41a6f6';
+        g.fillRect(Math.round(e.x + ox - 1), Math.round(e.y - 12), 3, 2);
+        g.fillStyle = '#73eff7';
+        g.fillRect(Math.round(e.x + ox - 1 + (f % 3)), Math.round(e.y - 14 - (f % 2)), 1, 2);
+      }
+    } else if (e.type === 'spider' && e.state === 'cast') {
+      // A web glob gathering at its fangs.
+      const k = 1 - e.t / STATS.spider.windup;
+      this.disc(Math.round(e.x + e.face * 8), Math.round(e.y - 5), 1 + Math.round(k * 2), '#f4f4f4');
     } else if (e.type === 'reaper') {
       this.drawScythe(e, e.x + e.face * 5, e.y - 8 - lift);
     } else if (e.type === 'imp' && e.state === 'cast') {
@@ -3494,7 +4059,7 @@ export class Game {
     for (let k = 4; k < RAT.reach; k += 3) {
       const x = o.x + e.aimX * k;
       const y = o.y + e.aimY * k;
-      if (x < 6 || x > W - 6 || y < 30 || y > H - 4) break;
+      if (x < SCR.x0 || x > SCR.x1 || y < SCR.y0 || y > SCR.y1) break;
       g.fillRect(Math.round(x), Math.round(y), 1, 1);
     }
   }
@@ -3591,6 +4156,20 @@ export class Game {
   }
 
   /** Goblin dagger: held low, pulled back while crouching, jabbed out during the lunge. */
+  /** Living armour's big sword: point-down at its side, raised over its head, then swung at you. */
+  private drawGreatsword(e: Enemy, ox: number) {
+    const hx = e.x + ox + e.face * 6;
+    const hy = e.y - 8;
+    let ang = Math.PI / 2 - e.face * 0.25;
+    if (e.state === 'windup') ang = -Math.PI / 2 - e.face * 0.4;
+    else if (e.state === 'recover') ang = Math.atan2(e.aimY, e.aimX) + e.face * 0.6;
+    const cx = Math.cos(ang);
+    const cy = Math.sin(ang);
+    const flash = e.state === 'windup' && Math.floor(this.time * 20) % 2;
+    this.pixelLine(hx + cx * 2, hy + cy * 2, hx + cx * 13, hy + cy * 13, flash ? '#f4f4f4' : '#94b0c2');
+    this.pixelLine(hx - cy * 2, hy + cx * 2, hx + cy * 2, hy - cx * 2, '#ffcd75');
+  }
+
   private drawDagger(e: Enemy, hx: number, hy: number) {
     const g = this.g;
     if (e.state === 'windup') {
@@ -3674,7 +4253,7 @@ export class Game {
 
   private drawShock(s: Shock) {
     const g = this.g;
-    const r = SLAM_R * (1 - s.t / 0.35) + 4;
+    const r = (s.r ?? SLAM_R) * (1 - s.t / 0.35) + 4;
     g.fillStyle = s.t > 0.2 ? '#94b0c2' : '#566c86';
     for (let a = 0; a < Math.PI * 2; a += 1.5 / r) {
       g.fillRect(Math.round(s.x + Math.cos(a) * r), Math.round(s.y + Math.sin(a) * r * 0.6), 2, 1);
@@ -3695,6 +4274,25 @@ export class Game {
       this.disc(x, y - z - 4, 2, '#8a3f9e');
       g.fillStyle = '#a7f070';
       g.fillRect(x - 1, y - z - 6, 1, 1);
+    } else if (b.web) {
+      // A sticky white web glob with strands.
+      this.disc(x, y, 2, '#f4f4f4');
+      g.fillStyle = '#94b0c2';
+      g.fillRect(x, y, 1, 1);
+      g.fillStyle = 'rgba(244,244,244,0.6)';
+      g.fillRect(x - 4, y, 9, 1);
+      g.fillRect(x, y - 4, 1, 9);
+    } else if (b.boomerang) {
+      this.drawBoomerang(b.x, b.y, this.time * 18);
+    } else if (b.spear) {
+      const d = Math.hypot(b.vx, b.vy) || 1;
+      const ux = b.vx / d;
+      const uy = b.vy / d;
+      this.pixelLine(b.x - ux * 12, b.y - uy * 12, b.x, b.y, '#8b5a3c');
+      g.fillStyle = '#ffcd75';
+      g.fillRect(Math.round(b.x - 1), Math.round(b.y - 1), 2, 2);
+      g.fillStyle = '#f4f4f4';
+      g.fillRect(Math.round(b.x + ux * 2), Math.round(b.y + uy * 2), 1, 1);
     } else if (b.packet) {
       // A flickering missing-texture block.
       const f = Math.floor(this.time * 20) % 2;
@@ -3922,6 +4520,40 @@ export class Game {
       g.fillRect(x - 3, y - 1, 6, 2);
       g.fillStyle = Math.floor(this.time * 4 + x) % 2 ? '#ef7d57' : '#b13e53';
       g.fillRect(x, y - 1, 1, 1);
+    } else if (d.type === 'armor') {
+      // An empty heap of armour, helmet on top.
+      g.fillStyle = '#333c57';
+      g.fillRect(x - 6, y - 1, 12, 2);
+      g.fillStyle = '#566c86';
+      g.fillRect(x - 5, y - 2, 5, 2);
+      g.fillRect(x + 1, y - 1, 4, 1);
+      g.fillStyle = '#94b0c2';
+      g.fillRect(x - 2, y - 4, 4, 3);
+      g.fillStyle = '#ff004d';
+      g.fillRect(x - 1, y - 5, 2, 1);
+    } else if (d.type === 'ghost') {
+      // A little puddle of ectoplasm.
+      g.fillStyle = '#41a6f6';
+      g.fillRect(x - 4, y - 1, 8, 2);
+      g.fillStyle = '#73eff7';
+      g.fillRect(x - 2, y - 1, 3, 1);
+    } else if (d.type === 'mimic') {
+      // Splintered planks and a broken lid.
+      g.fillStyle = '#8b5a3c';
+      g.fillRect(x - 6, y - 1, 5, 2);
+      g.fillRect(x + 1, y, 5, 1);
+      g.fillRect(x - 2, y - 3, 6, 2);
+      g.fillStyle = '#ffcd75';
+      g.fillRect(x - 1, y - 3, 1, 2);
+      g.fillStyle = '#f4f4f4';
+      g.fillRect(x + 4, y - 1, 1, 1);
+    } else if (d.type === 'spider') {
+      // Curled up on its back, legs in the air.
+      g.fillStyle = '#1a1c2c';
+      g.fillRect(x - 4, y - 2, 8, 3);
+      for (const lx of [-4, -2, 1, 3]) g.fillRect(x + lx, y - 4 + (lx & 1), 1, 2);
+      g.fillStyle = '#333c57';
+      g.fillRect(x - 3, y - 1, 6, 1);
     } else if (d.type === 'rat') {
       // A scorch mark that still sparks now and then.
       g.fillStyle = '#1a1c2c';
@@ -3997,7 +4629,8 @@ export class Game {
     });
     let row = this.perks.length;
     if (p.poisonT > 0) this.text(`${p.poisonName} ${Math.ceil(p.poisonT)}s`, 3, 14 + row++ * 10, '#a7f070');
-    if (p.glitchT > 0) this.text(`GL1TCHED ${Math.ceil(p.glitchT)}s`, 3, 14 + row * 10, Math.floor(this.time * 8) % 2 ? '#73eff7' : '#ff004d');
+    if (p.glitchT > 0) this.text(`GL1TCHED ${Math.ceil(p.glitchT)}s`, 3, 14 + row++ * 10, Math.floor(this.time * 8) % 2 ? '#73eff7' : '#ff004d');
+    if (p.webT > 0) this.text(`WEBBED ${Math.ceil(p.webT)}s`, 3, 14 + row * 10, '#f4f4f4');
   }
 
   private drawTitle() {
@@ -4021,6 +4654,10 @@ export class Game {
       ['rat', 'THUNDER RAT', 'SMALL', 'LIGHTNING'],
       ['imp', 'IMP', 'SWARMS', 'FIREBALLS'],
       ['wolf', 'WOLF', 'PACKS', 'POUNCES'],
+      ['spider', 'SPIDER', 'WEBS YOU', 'THEN BITES'],
+      ['armor', 'LIVING ARMOR', 'ARMORED', 'GET CLOSE'],
+      ['mimic', 'MIMIC', 'LOOKS LIKE', 'LOOT'],
+      ['ghost', 'GHOST', 'VANISHES', 'BOO!'],
     ];
     // Three at a time, rotating through the whole cast.
     const first = Math.floor(this.time / 2.5) * 3;
@@ -4036,7 +4673,7 @@ export class Game {
     });
 
     this.text('WASD MOVE  MOUSE ATTACK  P PAUSE', W / 2, 128, '#94b0c2', 'center');
-    this.text('1 WAND  2 SWORD  Q/WHEEL SWAP', W / 2, 138, '#94b0c2', 'center');
+    this.text('1 WAND  2 SWORD  6 HERO  Q/WHEEL', W / 2, 138, '#94b0c2', 'center');
     this.text('3/E/RMB NOVA  SPACE DASH  M MUTE', W / 2, 148, '#94b0c2', 'center');
     if (Math.floor(this.time * 2) % 2 === 0) this.text('CLICK OR ENTER TO START', W / 2, 161, '#f4f4f4', 'center');
     this.text(`S SHOP & HEROES   HERO: ${this.hero.name}`, W / 2, 171, '#566c86', 'center');
@@ -4126,6 +4763,7 @@ export class Game {
       this.text(`HP ${h.hp}`, 180, 88, '#f4f4f4');
       this.text(`SPEED ${h.speed}`, 180, 99, '#f4f4f4');
       this.text(`DAMAGE x${h.dmg}`, 180, 110, '#f4f4f4');
+      this.text(WEAPON_NAMES[HERO_WEAPONS[h.id]], 180, 121, '#ffcd75');
     }
     const msg = this.shopMsg.t > 0 ? this.shopMsg : { text: desc, color: '#94b0c2' };
     this.text(msg.text, W / 2, 136, msg.color, 'center');

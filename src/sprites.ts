@@ -719,6 +719,108 @@ const RAT_BODY = [
   '....kyyyyyyyk...',
 ];
 
+/** Living armour (wave 4+): an empty suit of armour with ghost eyes glowing through the visor. */
+const ARMOR_BODY = [
+  '.......kk.......',
+  '......kRRk......',
+  '.....kGRRGk.....',
+  '....kGgGGGdk....',
+  '....kdCddCdk....',
+  '....kGGGGGdk....',
+  '.....kkkkkk.....',
+  '.kkk.kGGGGk.kkk.',
+  'kgGdkGgGGGdkGgdk',
+  '.kkdkGGGGGdkdkk.',
+  '...kkGdGGddkk...',
+  '....kmmymmmk....',
+  '....kGdkkGdk....',
+];
+/** The same suit once its helmet has been knocked off: nothing inside but a ghostly glow. */
+const ARMOR_HEADLESS = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '.....kkCCkk.....',
+  ...ARMOR_BODY.slice(7),
+];
+const ARMOR_LEGS = [
+  ['....kGdk..kGdk..', '....kGdk..kGdk..', '...kkkkk..kkkkk.'],
+  ['....kGdk..kGdk..', '...kGdk....kGdk.', '...kkkk....kkkk.'],
+];
+
+/** Giant spider (wave 3+): spits webs that slow you down, then rushes in to bite. */
+const GIANT_SPIDER_BODY = [
+  '..kkkkkk............',
+  '.kGGGGGGk...........',
+  'kGGgGGGGGk..kkkk....',
+  'kGRRRGGGgk.kGGGGk...',
+  'kGGRGGGGgkkGGRGRk...',
+  '.kGGGGGGkkGGGGGGGk..',
+  '..kkkkkkkkkkkkkkk...',
+];
+const GIANT_SPIDER_A = [
+  '.G..G..G...G..G..G..',
+  'G..G..G.....G..G..G.',
+  'G..G..G.....G..G..G.',
+];
+const GIANT_SPIDER_B = [
+  '..G..G..G.G..G..G...',
+  '..G..G..G.G..G..G...',
+  '.G..G..G...G..G..G..',
+];
+
+/** Ghost (wave 8+): floats about, fades out completely, then pops up next to you. */
+const GHOST_TOP = [
+  '.....kkkkkk.....',
+  '....kwwwwwwk....',
+  '...kwwwwwwwwk...',
+  '..kwwkkwwkkwwk..',
+  '..kwwkkwwkkwwk..',
+  '..kwwwwwwwwwwk..',
+  '..kwwwwkkwwwwk..',
+  '..kwwwkddkwwwk..',
+  '..kwwwwkkwwwwk..',
+  '..kgwwwwwwwwgk..',
+  '..kgwwwwwwwwgk..',
+];
+const GHOST_A = [...GHOST_TOP, '..kggwggwggwgk..', '..kgk.kgk.kgkk..', '...k...k...k....'];
+const GHOST_B = [...GHOST_TOP, '..kgggwggwgggk..', '..kkgk.kgk.kgk..', '....k...k...k...'];
+
+/** Mimic (wave 7+): an innocent treasure chest. Until you get close. */
+const MIMIC_SHUT = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '...kkkkkkkkkk...',
+  '..kmmmmmmmmmmk..',
+  '.kmymmmmmmmmymk.',
+  '.kyyyyykkyyyyyk.',
+  '.kmmmmkyykmmmmk.',
+  '.kmymmkkkkmmymk.',
+  '.kmymmmmmmmmymk.',
+  '.kmymmmmmmmmymk.',
+  '.kkkkkkkkkkkkkk.',
+];
+const MIMIC_OPEN = [
+  '...kkkkkkkkkk...',
+  '..kmmmmmmmmmmk..',
+  '.kmymmmmmmmmymk.',
+  '.kyyyyyyyyyyyyk.',
+  '.kwkwkwkwkwkwkk.',
+  '.kkkRkkkkkkRkkk.',
+  '.kkkkkkkkkkkkkk.',
+  '.kkkkkiiiiikkkk.',
+  '.kwkwkiiiiiwkwk.',
+  '.kyyyyyiiyyyyyk.',
+  '.kmymmmmmmmmymk.',
+  '.kmymmmmmmmmymk.',
+  '.kkkkkkkkkkkkkk.',
+];
+
 export const SPR = {
   player: spriteSet(PLAYER_BODY, [
     ['....kmk..kmk....', '....kmk..kmk....', '...kkkk..kkkk...'],
@@ -755,10 +857,15 @@ export const SPR = {
   dragon: spriteSet([], [DRAGON_WINGS_UP, DRAGON_WINGS_DOWN]),
   eyeball: spriteSet([], [eyeball(0), eyeball(1)]),
   petDragon: spriteSet([], [recolor(DRAGON_WINGS_UP, PET_DRAGON_COLOURS), recolor(DRAGON_WINGS_DOWN, PET_DRAGON_COLOURS)]),
-  spider: spriteSet([], [SPIDER_A, SPIDER_B]),
+  petSpider: spriteSet([], [SPIDER_A, SPIDER_B]),
+  spider: spriteSet(GIANT_SPIDER_BODY, [GIANT_SPIDER_A, GIANT_SPIDER_B]),
+  armor: spriteSet(ARMOR_BODY, ARMOR_LEGS),
+  armorHeadless: spriteSet(ARMOR_HEADLESS, ARMOR_LEGS),
   petWolf: spriteSet([], [WOLF_A, WOLF_B]),
   wolf: spriteSet([], [recolor(WOLF_A.slice(5), WOLF_FOE), recolor(WOLF_B.slice(5), WOLF_FOE)]),
   imp: spriteSet([], [IMP_UP, IMP_DOWN]),
+  ghost: spriteSet([], [GHOST_A, GHOST_B]),
+  mimic: spriteSet([], [MIMIC_SHUT, MIMIC_OPEN]),
   rat: spriteSet(RAT_BODY, [['.....kk...kk....'], ['....kk.....kk...']]),
   phoenix: spriteSet([], [PHOENIX_A, PHOENIX_B]),
   mage: spriteSet(MAGE_BODY, [
@@ -810,6 +917,10 @@ export const ICONS = {
   wolf: SPR.wolf.r[0],
   imp: SPR.imp.r[0],
   rat: SPR.rat.r[0],
+  armor: SPR.armor.r[0],
+  spider: SPR.spider.r[0],
+  ghost: SPR.ghost.r[0],
+  mimic: SPR.mimic.r[1],
   gem: build([
     '..kkkk..',
     '.kCwcck.',

@@ -20,6 +20,10 @@ export type AdSource =
   | 'wolf'
   | 'imp'
   | 'rat'
+  | 'armor'
+  | 'spider'
+  | 'ghost'
+  | 'mimic'
   | 'premium'
   | 'death'
   | 'bonus';
@@ -39,7 +43,14 @@ type Kind =
   | 'hide'
   | 'captcha'
   | 'terms'
-  | 'slider';
+  | 'slider'
+  | 'watch'
+  | 'slots'
+  | 'unsub'
+  | 'hydra'
+  | 'wizard'
+  | 'quiz'
+  | 'sticky';
 
 interface Creative {
   tags: AdSource[];
@@ -50,7 +61,7 @@ interface Creative {
   fine: string;
 }
 
-const ANY: AdSource[] = ['skeleton', 'zombie', 'sorcerer', 'goblin', 'troll', 'reaper', 'glitch', 'dragon', 'eyeball', 'bat', 'bear', 'worm', 'slime', 'wolf', 'imp', 'rat', 'bonus'];
+const ANY: AdSource[] = ['skeleton', 'zombie', 'sorcerer', 'goblin', 'troll', 'reaper', 'glitch', 'dragon', 'eyeball', 'bat', 'bear', 'worm', 'slime', 'wolf', 'imp', 'rat', 'armor', 'spider', 'ghost', 'mimic', 'bonus'];
 
 const CREATIVES: Creative[] = [
   { tags: ['skeleton'], headline: 'HOT SKELETONS IN YOUR AREA', body: "They're 2 metres away and ready to RATTLE.", cta: 'MEET THEM', icon: 'skeleton', fine: '*Skeletons may be armed. And dangerous. Mostly armed.' },
@@ -101,7 +112,39 @@ const CREATIVES: Creative[] = [
   { tags: ['imp'], headline: 'SPICY WINGS', body: 'Fresh from the underworld. 100% real imp.', cta: 'ORDER', icon: 'imp', fine: 'Allergens: brimstone, sulfur, malice.' },
   { tags: ['rat'], headline: 'GOTTA ZAP EM ALL', body: 'Collect all 1 thunder rats! Booster packs out now.', cta: 'BUY PACKS', icon: 'rat', fine: 'Packs contain no rats. Rats contain thunder.' },
   { tags: ['rat'], headline: 'FREE ELECTRICITY', body: 'Power your whole home with ONE angry rat. Energy firms hate it.', cta: 'GO GREEN', icon: 'rat', fine: 'Rat may object. Rat will object.' },
+  { tags: ['armor'], headline: 'NOBODY HOME?', body: 'Rent out your empty suit of armour! It already has a sword.', cta: 'LIST IT', icon: 'armor', fine: 'Guests may be haunted. Armour may be the haunting.' },
+  { tags: ['armor'], headline: 'RUST REMOVER', body: 'Squeaky joints? Creaky knees? Ghost inside? We fix 2 of those.', cta: 'BUY OIL', icon: 'armor', fine: 'Ghost not covered under warranty.' },
+  { tags: ['armor'], headline: 'HELMET RECALL', body: 'Our helmets fall off when hit. Please stop hitting them.', cta: 'RETURN HELMET', icon: 'armor', fine: 'Refund paid in loose rivets.' },
+  { tags: ['spider'], headline: 'FAST WEB', body: 'Get 8-legged broadband today! Our web catches EVERYTHING.', cta: 'CONNECT', icon: 'spider', fine: 'You are now part of the web. Forever.' },
+  { tags: ['spider'], headline: 'HUGS FROM 8 ARMS', body: 'Lonely? Giant spiders near you would love to hold you. Tightly.', cta: 'GET HUGGED', icon: 'spider', fine: 'Hugs last until you are a snack.' },
+  { tags: ['spider'], headline: 'NEED A HAND?', body: 'Hire a giant spider: 8 hands for the price of 2!', cta: 'HIRE NOW', icon: 'spider', fine: 'All hands are legs. All legs are hairy.' },
   { tags: ['rat'], headline: 'PEST CONTROL', body: 'Thunder rats? We will be right there. From a safe distance.', cta: 'CALL NOW', icon: 'rat', fine: 'Technician is wearing rubber everything.' },
+  { tags: ['ghost'], headline: 'HAUNTED HOUSE FOR SALE', body: 'Spacious, period features, one previous owner who never left.', cta: 'BOOK VIEWING', icon: 'ghost', fine: 'Previous owner included in the sale.' },
+  { tags: ['ghost'], headline: 'BEING GHOSTED?', body: 'Find out why they stopped replying. (They died in 1847.)', cta: 'FIND OUT', icon: 'ghost', fine: 'Seance fees apply.' },
+  { tags: ['ghost'], headline: 'SHEET HAPPENS', body: 'Luxury 1000-thread-count bedsheets. Ghosts LOVE them!', cta: 'SHOP SHEETS', icon: 'ghost', fine: 'Eye holes cut for free.' },
+  { tags: ['mimic'], headline: 'FREE LOOT!!!', body: 'This chest is definitely just a chest. Go on, open it!', cta: 'OPEN CHEST', icon: 'mimic', fine: 'Chest may open you first.' },
+  { tags: ['mimic'], headline: 'TEETH WHITENING', body: 'Our happiest customer has 40 teeth and a lid.', cta: 'SMILE', icon: 'mimic', fine: 'Results may bite.' },
+  { tags: ['mimic'], headline: 'STORAGE SOLUTIONS', body: 'Chests that come to YOU. Fast. Very fast. Run.', cta: 'ORDER', icon: 'mimic', fine: 'Delivery is aggressive.' },
+  { tags: ANY, headline: 'WORK FROM DUNGEON', body: 'Local heroes earn 900 gold an hour. You earn ads.', cta: 'APPLY', icon: 'coin', fine: 'Hourly rate excludes time spent dead.' },
+  { tags: ANY, headline: 'YOU HAVE (1) NEW MESSAGE', body: 'From: a skeleton. Subject: re: re: re: bones', cta: 'READ IT', icon: 'skeleton', fine: 'Message may be cursed.' },
+  { tags: ANY, headline: 'SWORD LOANS', body: 'Need a bigger sword? Borrow one at only 400% APR!', cta: 'BORROW', icon: 'coin', fine: 'Repayments collected by trolls.' },
+  { tags: ANY, headline: 'DOCTORS HATE THIS', body: 'Heal 20 HP with one weird heart you found on the floor.', cta: 'TELL ME', icon: 'heart', fine: 'Floor hearts are not approved by any doctor.' },
+  { tags: ANY, headline: 'RATE US 5 STARS', body: 'Every 5-star review removes one ad. (It does not.)', cta: 'RATE NOW', icon: 'gem', fine: 'Every review adds one ad.' },
+  { tags: ANY, headline: 'LIMITED EDITION NFT', body: 'Own a picture of a sword. Not the sword. A picture.', cta: 'MINT NOW', icon: 'gem', fine: 'Picture may be right-clicked.' },
+  { tags: ANY, headline: 'YOUR WARRANTY EXPIRED', body: "We've been trying to reach you about your armour's extended warranty.", cta: 'RENEW', icon: 'armor', fine: 'We will keep trying. Forever.' },
+  { tags: ANY, headline: 'AD-FREE IS HERE!', body: 'Upgrade to AD NAUSEAM PRO for an ad-free experience!*', cta: 'UPGRADE', icon: 'coin', fine: '*Experience contains ads.' },
+  { tags: ANY, headline: 'MAP EXPANSION PACK', body: 'The arena is now ENDLESS! Unlock walls for just 9.99/month.', cta: 'BUY WALLS', icon: 'coin', fine: 'Walls sold separately. Floor rented.' },
+  { tags: ANY, headline: 'LOST? CALL DUNGEON-NAV', body: 'Turn-by-turn directions to the nearest exit. There is no exit.', cta: 'GET DIRECTIONS', icon: 'player', fine: 'Recalculating. Recalculating. Recalculating.' },
+  { tags: ANY, headline: 'GYM MEMBERSHIP', body: 'You walk for miles every wave. Why not do it on a treadmill?', cta: 'JOIN NOW', icon: 'potion', fine: 'Cancellation requires a blood oath.' },
+  { tags: ANY, headline: 'SINGLE-USE HEARTS', body: 'Tired of reusable hearts? Try our new disposable range!', cta: 'STOCK UP', icon: 'heart', fine: 'Hearts must be disposed of in an approved crypt.' },
+  { tags: ANY, headline: 'PIXEL PERFECT SKIN', body: 'Get that crisp 16-colour look. Dermatologists stunned.', cta: 'GLOW UP', icon: 'gem', fine: 'Max 16 colours per face.' },
+  { tags: ANY, headline: 'TIME SHARE IN THE VOID', body: 'Two weeks a year in an infinite, featureless plane. Bliss.', cta: 'VISIT', icon: 'glitch', fine: 'The void may stare back.' },
+  { tags: ANY, headline: 'ARE YOU STILL WATCHING?', body: 'We paused your game to check. Press any button to see more ads.', cta: 'STILL HERE', icon: 'eyeball', fine: 'Every button is that button.' },
+  { tags: ANY, headline: 'UNCLAIMED INHERITANCE', body: 'A distant skeleton left you 4,000,000 gold. Just pay the 9 gold fee.', cta: 'CLAIM GOLD', icon: 'coin', fine: 'The skeleton is not distant. It is behind you.' },
+  { tags: ['skeleton'], headline: 'CALCIUM SUPPLEMENTS', body: 'One hit and you fall apart? We can help.', cta: 'GET STRONG', icon: 'skeleton', fine: 'Will not help.' },
+  { tags: ['zombie'], headline: 'MEAL DELIVERY', body: 'Fresh brains to your door in 30 minutes, or the delivery guy is free.', cta: 'ORDER', icon: 'brain', fine: 'The delivery guy is the meal.' },
+  { tags: ['goblin'], headline: 'GOBLIN BANK', body: 'Your coins are safe with us. We promise. Look, a distraction!', cta: 'DEPOSIT', icon: 'goblin', fine: 'Coins may run away at 74 pixels a second.' },
+  { tags: ['wolf'], headline: 'DOGGY DAYCARE', body: 'We will look after your wolf. And your sheep. Mostly the sheep.', cta: 'BOOK', icon: 'wolf', fine: 'Sheep not returned.' },
   { tags: ANY, headline: 'DOWNLOAD MORE HP', body: '100% legit. No viruses. Probably.', cta: 'DOWNLOAD', icon: 'heart', fine: 'May contain viruses.' },
   { tags: ANY, headline: 'CONGRATULATIONS!!!', body: 'You are the 1,000,000th hero! Claim your FREE sword now!', cta: 'CLAIM PRIZE', icon: 'coin', fine: 'You are also the 999,999th and 1,000,001st hero.' },
   { tags: ANY, headline: 'YOUR PC HAS (3) CURSES', body: "Scan now with HexDefender PRO before it's too late.", cta: 'SCAN NOW', icon: 'sorcerer', fine: 'HexDefender PRO is the curse.' },
@@ -130,6 +173,21 @@ const TERMS = [
   'Dying does not cancel your subscription.',
   'We reserve the right to add more terms at any time. Like now.',
 ];
+const EXTRAS = ['AD NAUSEAM Toolbar', 'Skeleton Search (default)', 'Free Cursed Screensaver', 'Goblin Price Tracker', 'Necro Cleaner PRO', 'Extra Ads (recommended)'];
+const QUIZ: [string, string[]][] = [
+  ['Pick a weapon:', ['A wand', 'A sword', 'Running away']],
+  ['Your ideal weekend:', ['Dungeon', 'More dungeon', 'Watching ads']],
+  ['How many ads is too many?', ['5', '50', 'There is no such thing']],
+  ['Pick a snack:', ['Bones', 'Brains', 'A floor heart']],
+  ['How do you feel right now?', ['Annoyed', 'Very annoyed', 'Sponsored']],
+];
+const QUIZ_RESULTS = [
+  'A SKELETON. Fragile, but you hit hard.',
+  'A MIMIC. You look like loot, but you bite.',
+  'A GOBLIN. You will steal this quiz.',
+  'AN AD. Congratulations, you are the problem.',
+  'A GHOST. You stopped replying to your friends.',
+];
 const COOKIE_TOGGLES = ['Legitimate interest', 'Soul tracking', 'Bone analytics', 'Necromancy partners', 'Selling data to sorcerers'];
 
 /** [kind, weight, ad level it unlocks at]. The level is the wave number, so ads get nastier as you go. */
@@ -149,6 +207,13 @@ const WEIGHTS: [Kind, number, number][] = [
   ['hide', 2, 3],
   ['captcha', 1.5, 3],
   ['terms', 1.5, 4],
+  ['watch', 2, 2],
+  ['slots', 2, 3],
+  ['unsub', 1.5, 4],
+  ['hydra', 1, 5],
+  ['quiz', 2, 2],
+  ['wizard', 1.5, 3],
+  ['sticky', 1.5, 4],
 ];
 
 export type PerkId = 'rapid' | 'power' | 'swift' | 'heal' | 'nova' | 'slow' | 'weak' | 'jam' | 'drain' | 'reverse';
@@ -205,6 +270,9 @@ export class AdManager {
   private openedAt = 0;
   private lastKind: Kind | null = null;
   private perk: PerkId | null = null;
+  /** The floating "sticky" video ad. It doesn't pause the game, so it lives outside `root`. */
+  private stickyEl: HTMLDivElement | null = null;
+  private stickyTimers: number[] = [];
   watched = 0;
   seconds = 0;
   /** Set by the game to the current wave: unlocks harder ad kinds and makes them last longer. */
@@ -230,6 +298,7 @@ export class AdManager {
     this.clearTimers();
     this.root?.remove();
     this.root = null;
+    this.clearSticky();
     this.pendingNext = false;
     this.perk = null;
     this.watched = 0;
@@ -339,6 +408,8 @@ export class AdManager {
 
     if (kind === 'cookie') return this.cookie();
     if (kind === 'storm') return this.storm(src);
+    if (kind === 'hydra') return this.hydra(src);
+    if (kind === 'sticky') return this.sticky(c);
 
     const w = this.makeWin(c);
     root.appendChild(w.win);
@@ -369,6 +440,16 @@ export class AdManager {
         return this.terms(w);
       case 'slider':
         return this.slider(w);
+      case 'watch':
+        return this.watch(w);
+      case 'slots':
+        return this.slots(w);
+      case 'unsub':
+        return this.unsub(w);
+      case 'wizard':
+        return this.wizard(w);
+      case 'quiz':
+        return this.quiz(w);
     }
   }
 
@@ -670,6 +751,293 @@ export class AdManager {
       };
       root.append(w.win);
     }
+  }
+
+  /** Close one and two more grow back in its place, until the level's budget of heads runs out. */
+  private hydra(src: AdSource) {
+    const root = this.root!;
+    let heads = this.scaled(1, 6);
+    let open = 0;
+    let closed = 0;
+    const spawn = (x: number, y: number, delay: number) => {
+      const w = this.makeWin(this.creative(src), true);
+      w.win.classList.add('free');
+      w.win.style.left = `${Math.round(Math.max(8, Math.min(640 - 248, x)))}px`;
+      w.win.style.top = `${Math.round(Math.max(8, Math.min(360 - 150, y)))}px`;
+      w.win.style.animationDelay = `${delay}ms`;
+      if (heads > 0) w.title.textContent = 'HYDRA AD';
+      open++;
+      w.x.onclick = () => {
+        w.win.remove();
+        open--;
+        closed++;
+        sfx.click();
+        const grow = Math.min(2, heads);
+        heads -= grow;
+        for (let k = 0; k < grow; k++) spawn(x + rand(-140, 140), y + rand(-70, 70), k * 120);
+        if (grow) sfx.boing();
+        if (open === 0) this.finish(closed - 1);
+      };
+      root.append(w.win);
+    };
+    spawn(200, 105, 0);
+  }
+
+  /** "Watch the whole ad": it only plays while the pointer is over it, and rewinds if you look away. */
+  private watch(w: Win) {
+    w.x.style.display = 'none';
+    w.title.textContent = 'NOW PLAYING';
+    const total = this.scaled(2, 6) * 1000;
+    let played = 0;
+    let looking = false;
+    const bar = h('div', 'progress');
+    const fillEl = h('div', 'progress-fill');
+    bar.append(fillEl);
+    const label = h('span', 'watch-label');
+    const box = h('div', 'watch');
+    box.append(bar, label);
+    w.foot.replaceChildren(box);
+    w.win.addEventListener('pointermove', () => (looking = true));
+    w.win.addEventListener('pointerleave', () => (looking = false));
+    this.every(100, () => {
+      played = looking ? played + 100 : Math.max(0, played - 150);
+      fillEl.style.width = `${Math.min(100, (played / total) * 100)}%`;
+      label.textContent = looking
+        ? `PLAYING... ${Math.ceil((total - played) / 1000)}s`
+        : played > 0
+          ? 'HEY! EYES ON THE AD. REWINDING...'
+          : 'POINT AT THE AD TO PLAY IT';
+      if (played < total) return true;
+      label.textContent = 'THANKS FOR WATCHING!';
+      w.x.style.display = '';
+      w.x.onclick = () => this.finish();
+      sfx.pickup();
+      return false;
+    });
+  }
+
+  /** A rigged slot machine: line up three Xs to close the ad. It "nearly" pays out a few times first. */
+  private slots(w: Win) {
+    w.x.style.display = 'none';
+    w.title.textContent = 'SPIN TO CLOSE';
+    let fails = this.scaled(0, 3);
+    const faces: IconName[] = ['coin', 'gem', 'heart', 'potion', 'skeleton', 'goblin', 'mimic'];
+    const reels = Array.from({ length: 3 }, () => h('div', 'reel'));
+    const row = h('div', 'reels');
+    row.append(...reels);
+    const show = (i: number, f: IconName | 'x') => reels[i].replaceChildren(f === 'x' ? h('span', 'reel-x', 'X') : icon(f, 'reel-art'));
+    reels.forEach((_, i) => show(i, pick(faces)));
+    const msg = h('p', '', 'Line up 3 X to close this ad!');
+    const spin = h('button', 'nag-cta', 'SPIN');
+    const buy = h('button', 'nag-link', 'buy 10 spins for 99 gold');
+    buy.onclick = () => this.bonus();
+    const choices = h('div', 'nag-choices');
+    choices.append(spin, buy);
+    const text = h('div', 'nag-text');
+    text.append(h('h3', '', 'FREE SPIN!'), msg, row, choices);
+    w.body.replaceChildren(text);
+    spin.onclick = () => {
+      spin.disabled = true;
+      sfx.click();
+      const win = fails <= 0;
+      // Losing spins are near misses more often than not.
+      const result: (IconName | 'x')[] = win ? ['x', 'x', 'x'] : Math.random() < 0.6 ? ['x', 'x', pick(faces)] : [pick(faces), 'x', pick(faces)];
+      let tick = 0;
+      this.every(80, () => {
+        tick++;
+        for (let i = 0; i < 3; i++) {
+          if (tick < 6 + i * 4) show(i, pick(faces));
+          else if (tick === 6 + i * 4) {
+            show(i, result[i]);
+            sfx.click();
+          }
+        }
+        if (tick < 14) return true;
+        if (win) {
+          msg.textContent = 'JACKPOT! Your prize: this ad closes.';
+          sfx.pickup();
+          this.later(800, () => this.finish());
+        } else {
+          fails--;
+          msg.textContent = pick(['SO CLOSE! Spin again!', 'ALMOST! One more go!', 'NEARLY! Your luck is about to turn!']);
+          sfx.buzz();
+          spin.textContent = 'SPIN AGAIN';
+          spin.disabled = false;
+        }
+        return false;
+      });
+    };
+  }
+
+  /** Type the word to unsubscribe. Getting it right the first time may "autocorrect" to SUBSCRIBE. */
+  private unsub(w: Win) {
+    w.x.style.display = 'none';
+    w.title.textContent = 'NEWSLETTER';
+    // No M (mute) or spaces (blocked by the game's input) in the word.
+    const word = 'UNSUBSCRIBE';
+    let trick = this.level >= 6 || Math.random() < 0.5;
+    const msg = h('p', '', `Type ${word} to stop seeing this ad.`);
+    const field = h('input', 'nag-field');
+    field.maxLength = 16;
+    field.autocomplete = 'off';
+    field.spellcheck = false;
+    const cta = h('button', 'nag-cta', 'SUBSCRIBE INSTEAD');
+    cta.onclick = () => this.bonus();
+    const text = h('div', 'nag-text');
+    text.append(h('h3', '', 'JOIN OUR MAILING LIST!'), msg, field, cta);
+    w.body.replaceChildren(icon('coin', 'nag-art'), text);
+    field.oninput = () => {
+      field.value = field.value.toUpperCase().replace(/[^A-Z]/g, '');
+      if (field.value !== word) return;
+      if (trick) {
+        trick = false;
+        field.value = 'SUBSCRIBE';
+        msg.textContent = 'Autocorrected to SUBSCRIBE. Thanks for subscribing! Try again?';
+        sfx.buzz();
+        this.shake(w.win);
+        this.later(900, () => (field.value = ''));
+        return;
+      }
+      field.disabled = true;
+      msg.textContent = 'Unsubscribed! (From 1 of our 40 lists.)';
+      sfx.pickup();
+      this.later(800, () => this.finish());
+    };
+    this.later(50, () => field.focus());
+  }
+
+  /** An installer with pre-ticked "optional" extras. Leave any ticked and you get another ad for it. */
+  private wizard(w: Win) {
+    w.x.style.display = 'none';
+    w.title.textContent = 'SETUP WIZARD';
+    const text = h('div', 'nag-text');
+    w.body.replaceChildren(icon('coin', 'nag-art'), text);
+    const next = h('button', 'nag-cta', 'NEXT >');
+    const step = (title: string, ...els: HTMLElement[]) => {
+      text.replaceChildren(h('h3', '', title), ...els, next);
+      sfx.click();
+    };
+    const extras = [...EXTRAS].sort(() => Math.random() - 0.5).slice(0, this.scaled(1, 4));
+    const boxes = extras.map((name) => {
+      const label = h('label', 'nag-check');
+      const box = h('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      label.append(box, document.createTextNode(` ${name}`));
+      return { label, box };
+    });
+    step('WELCOME!', h('p', '', 'This wizard will install AD NAUSEAM PREMIUM on your soul. Click NEXT to continue.'));
+    next.onclick = () => {
+      step('OPTIONAL EXTRAS', h('p', '', 'We picked these just for you:'), ...boxes.map((b) => b.label));
+      next.onclick = () => {
+        const kept = boxes.some((b) => b.box.checked);
+        const bar = h('div', 'progress');
+        const fillEl = h('div', 'progress-fill');
+        bar.append(fillEl);
+        next.textContent = 'FINISH';
+        next.disabled = true;
+        step('INSTALLING...', h('p', '', kept ? 'Great choices! Installing your extras too.' : 'Installing (sulkily)...'), bar);
+        let pct = 0;
+        this.every(60, () => {
+          pct = Math.min(100, pct + Math.ceil(rand(3, 10)));
+          fillEl.style.width = `${pct}%`;
+          if (pct < 100) return true;
+          next.disabled = false;
+          return false;
+        });
+        next.onclick = () => (kept ? this.bonus() : this.finish());
+      };
+    };
+  }
+
+  /** "Which enemy are you?": answer anything, the result is always an ad. */
+  private quiz(w: Win) {
+    w.x.style.display = 'none';
+    w.title.textContent = 'PERSONALITY QUIZ';
+    const qs = [...QUIZ].sort(() => Math.random() - 0.5).slice(0, this.scaled(1, 4));
+    const text = h('div', 'nag-text');
+    w.body.replaceChildren(icon('brain', 'nag-art'), text);
+    const ask = (i: number) => {
+      if (i >= qs.length) {
+        const share = h('button', 'nag-cta', 'SHARE RESULT');
+        share.onclick = () => this.bonus();
+        text.replaceChildren(h('h3', '', 'YOU ARE...'), h('p', '', pick(QUIZ_RESULTS)), share);
+        sfx.pickup();
+        return this.countdown(w, 2);
+      }
+      const [q, answers] = qs[i];
+      const row = h('div', 'nag-choices');
+      for (const a of answers) {
+        const b = h('button', 'nag-skip', a);
+        b.onclick = () => {
+          sfx.click();
+          ask(i + 1);
+        };
+        row.append(b);
+      }
+      text.replaceChildren(h('h3', '', `WHICH ENEMY ARE YOU? (${i + 1}/${qs.length})`), h('p', '', q), row);
+    };
+    ask(0);
+  }
+
+  /**
+   * A "sticky" video ad: it doesn't pause the game at all. It bounces around the screen like an old
+   * DVD logo, covering the arena while you fight, until it times out or you hit its tiny X.
+   */
+  private sticky(c: Creative) {
+    this.finish();
+    this.clearSticky();
+    const w = this.makeWin(c, true);
+    const el = w.win;
+    el.classList.add('free', 'sticky');
+    w.title.textContent = 'SPONSORED VIDEO';
+    w.x.classList.add('tiny');
+    w.x.textContent = 'x';
+    w.x.style.visibility = 'hidden';
+    w.x.onclick = () => this.clearSticky();
+    const cta = w.body.querySelector<HTMLButtonElement>('.nag-cta');
+    if (cta)
+      cta.onclick = () => {
+        this.clearSticky();
+        this.push('bonus');
+      };
+    this.layer.append(el);
+    this.stickyEl = el;
+    let x = rand(20, 400);
+    let y = rand(20, 200);
+    let vx = pick([-1, 1]) * rand(1.2, 1.8);
+    let vy = pick([-1, 1]) * rand(0.8, 1.3);
+    const id = window.setInterval(() => {
+      const mx = 640 - el.offsetWidth;
+      const my = 360 - el.offsetHeight;
+      x += vx;
+      y += vy;
+      const hx = x <= 0 || x >= mx;
+      const hy = y <= 0 || y >= my;
+      if (hx) vx = -vx;
+      if (hy) vy = -vy;
+      if (hx && hy) {
+        w.title.textContent = 'IT HIT THE CORNER!';
+        sfx.pickup();
+      }
+      x = Math.max(0, Math.min(mx, x));
+      y = Math.max(0, Math.min(my, y));
+      el.style.left = `${Math.round(x)}px`;
+      el.style.top = `${Math.round(y)}px`;
+    }, 33);
+    this.stickyTimers.push(id);
+    this.stickyTimers.push(window.setTimeout(() => (w.x.style.visibility = ''), 3000));
+    this.stickyTimers.push(window.setTimeout(() => this.clearSticky(), this.scaled(6, 14) * 1000));
+  }
+
+  private clearSticky() {
+    this.stickyTimers.forEach((id) => {
+      clearTimeout(id);
+      clearInterval(id);
+    });
+    this.stickyTimers = [];
+    this.stickyEl?.remove();
+    this.stickyEl = null;
   }
 
   /** A "playable ad": whack enough goblins and you earn the close button. */

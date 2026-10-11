@@ -37,6 +37,7 @@ there if the domain changes.
 | Mouse / arrow keys | Aim and attack with the current weapon |
 | 1 / 2 / 3 | Select wand / sword / nova |
 | 4 / 5 | Select scatter wand / bombs (once bought in the shop) |
+| 6 | Select your hero's own weapon |
 | Q | Swap between wand and sword |
 | Mouse wheel | Cycle weapons (skips the nova while it's recharging) |
 | E / right-click | Unleash the nova |
@@ -53,6 +54,12 @@ there if the domain changes.
   with a moment of invulnerability. 30 second cooldown. Select it with 3 / the wheel and attack,
   or fire it straight away with E / right-click. Yes, killing a whole room at once queues a whole
   room's worth of ads.
+- **Hero weapons** (6): every hero has one of their own.
+  - Adventurer: **boomerang**. Hits everything on the way out and again on the way back. One at a time.
+  - Mage: **skeletons**. Each cast raises a skeleton where you aim that marches off and fights for you
+    (up to 4; they crumble after 14 seconds, and the oldest goes if you raise a fifth).
+  - Knight: **warhammer**. Slams the ground just in front of you, hitting everything in a ring.
+  - Achilles: **spear**. A thrown spear that goes through everything, armour included.
 
 ## Enemies
 
@@ -79,11 +86,30 @@ there if the domain changes.
 - **Imp** (wave 4+): comes in swarms of three. Tiny flying devils that flit about erratically and
   throw small fireballs. One hit kills them; hitting them is the hard part.
 - **Wolf** (wave 5+): hunts in packs. Wolves circle you, crouch, then pounce. Watch for the crouch.
+- **Giant spider** (wave 3+): skitters around spitting webs. A web slows you right down, and while
+  you're stuck it crouches and rushes in to bite. It'll also bite if you get too close.
+- **Living armour** (wave 4+): an empty suit of armour with a big sword. Bolts and fireballs glance
+  off it for half damage, so use the sword, hammer, bombs, nova or a spear. Knock its helmet off
+  (half HP) and it gets faster.
+- **Mimic** (wave 7+): a treasure chest sitting quietly on the floor. Walk up to it (or shoot it)
+  and it wakes up, all teeth, and hops after you to chomp. Pays out a lot of coins, though.
+- **Ghost** (wave 8+): see-through and floaty. Every few seconds it fades out almost completely
+  (you can't hit it then), glides through to your other side and pops back up with a BOO!
+
+Later waves don't keep growing forever: a wave tops out at 22 enemies (they're tougher by then),
+and no more than 12 are on screen at once. The rest wait their turn.
+
+### The endless arena
+
+There are no walls: the floor goes on forever and the camera follows you. Enemies that fall too far
+behind come back in from just off screen, so you can't simply outrun a wave, and red markers at the
+edge of the screen show where off-screen enemies are. Bosses stay on screen (the rabid bear stuns
+itself charging into the edge of it).
 
 ### Maps
 
 Every boss you kill moves you on to the next map: **dungeon → desert → slime land → dungeon …**
-Each map has its own floor, walls and torches, and repaints every enemy (sun-bleached and sandy in
+Each map has its own floor and braziers, and repaints every enemy (sun-bleached and sandy in
 the desert, dripping green in slime land). Each also has its own native enemy:
 
 - **Sandworm** (desert): tunnels towards you as a moving mound of sand that can't be hit. When it gets
@@ -173,6 +199,15 @@ one fights back in a different way:
 - **Hide and seek**: the close button hides under one of six tiles, and sneaks off when you guess wrong
 - **Captcha**: "select all squares with SKELETONS", and it may not believe you're human the first time
 - **Terms of service**: scroll to the bottom to agree, but they keep adding more terms
+- **Watch the whole ad**: it only plays while your cursor is on it, and rewinds if you look away
+- **Spin to close**: a rigged slot machine; line up three Xs (after a few near misses)
+- **Unsubscribe**: type UNSUBSCRIBE to close it, and it may "autocorrect" you to SUBSCRIBE
+- **Hydra**: close it and two more grow back in its place
+- **Personality quiz**: "which enemy are you?" Every answer is right. The result is an ad.
+- **Setup wizard**: an installer with "optional" extras already ticked. Leave any ticked and you get
+  another ad
+- **Sticky video**: doesn't pause the game. It bounces around the screen like an old DVD logo,
+  covering the fight, until it times out or you find its tiny X
 
 You never know which you're getting until you close it: some ads secretly come with a
 **sponsor reward** (2× fire rate, 2× damage, speed boost,

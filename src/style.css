@@ -380,6 +380,89 @@ button {
   animation: slide-up 0.15s steps(3);
 }
 
+/* Watch-the-whole-ad progress bar. */
+.watch {
+  flex: 1;
+}
+
+.watch .progress {
+  height: 10px;
+  margin-bottom: 4px;
+}
+
+.watch-label {
+  font-size: 7px;
+}
+
+/* Rigged slot machine. */
+.reels {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.reel {
+  width: 52px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f4f4;
+  border: 2px solid var(--ink);
+  box-shadow: inset 0 4px 0 rgba(0, 0, 0, 0.2);
+}
+
+.reel-art {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.reel-x {
+  font-size: 20px;
+  color: #ff004d;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+/* Type-to-unsubscribe field. */
+.nag-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  padding: 6px;
+  font: inherit;
+  font-size: 10px;
+  color: #1a1c2c;
+  background: #f4f4f4;
+  border: 2px solid var(--ink);
+  outline: none;
+}
+
+/* Installer wizard checkboxes. */
+.nag-check {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.nag-check input {
+  vertical-align: middle;
+  margin: 0 4px 0 0;
+}
+
+.nag-choices .nag-skip {
+  font-size: 8px;
+}
+
+/* Sticky video ad: floats over the arena without pausing the game. */
+.nag-win.sticky {
+  width: 220px;
+  pointer-events: auto;
+  opacity: 0.92;
+}
+
 /* Hide-and-seek close button. */
 .tiles {
   display: grid;
